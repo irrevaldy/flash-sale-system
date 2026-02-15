@@ -1,0 +1,39 @@
+{
+  "name": "flash-sale-backend",
+  "version": "1.0.0",
+  "description": "High-throughput flash sale system backend",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:load": "artillery run tests/load/flash-sale.yml"
+  },
+  "keywords": ["flash-sale", "high-throughput", "redis", "concurrency"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "ioredis": "^5.3.2",
+    "express-rate-limit": "^7.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/jest": "^29.5.11",
+    "@types/supertest": "^6.0.2",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2",
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "supertest": "^6.3.3",
+    "artillery": "^2.0.3"
+  }
+}
