@@ -1,7 +1,7 @@
 // src/models/User.ts
 
 import mongoose, { Schema, Document } from 'mongoose';
-import bcrypt from 'bcryptjs';
+const bcrypt = require('bcryptjs');
 
 export interface IAddress {
   _id?: mongoose.Types.ObjectId;
