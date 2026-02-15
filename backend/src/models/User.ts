@@ -99,7 +99,6 @@ const UserSchema = new Schema<IUser>(
       unique: true,
       lowercase: true,
       trim: true,
-      index: true,
     },
     passwordHash: {
       type: String,
