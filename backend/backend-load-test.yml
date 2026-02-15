@@ -1,0 +1,44 @@
+# tests/load/flash-sale.yml
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "Warm up"
+    - duration: 60
+      arrivalRate: 100
+      name: "Sustained load"
+    - duration: 30
+      arrivalRate: 200
+      name: "Peak load"
+  processor: "./load-test-processor.js"
+
+scenarios:
+  - name: "Flash Sale Purchase Flow"
+    weight: 70
+    flow:
+      - get:
+          url: "/api/sale/status"
+          capture:
+            - json: "$.status"
+              as: "saleStatus"
+      - think: 1
+      - post:
+          url: "/api/sale/purchase"
+          json:
+            userId: "user_{{ $randomString() }}@test.com"
+          capture:
+            - json: "$.success"
+              as: "purchaseSuccess"
+            - json: "$.remainingStock"
+              as: "remainingStock"
+
+  - name: "Status Check Only"
+    weight: 30
+    flow:
+      - get:
+          url: "/api/sale/status"
+      - think: 2
+      - get:
+          url: "/api/sale/status"
