@@ -10,8 +10,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "seed": "ts-node src/scripts/seedData.ts",
-    "postinstall": "npm run build"
+    "seed": "ts-node src/scripts/seedData.ts"
   },
   "keywords": ["flash-sale", "e-commerce", "mongodb", "redis", "nodejs"],
   "author": "",
