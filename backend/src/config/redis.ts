@@ -26,9 +26,16 @@ class MockRedis {
     return value || null;
   }
 
-  async set(key: string, value: string): Promise<'OK'> {
+  async set(
+    key: string,
+    value: string,
+    mode?: string,
+    duration?: number
+  ): Promise<'OK'> {
     this.data.set(key, value);
     console.log(`[MockRedis] SET ${key} = ${value}`);
+
+    // Ignore expiration logic for mock (optional to implement)
     return 'OK';
   }
 

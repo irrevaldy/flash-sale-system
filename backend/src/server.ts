@@ -1,15 +1,18 @@
 // src/server.ts
+import dotenv from 'dotenv';
+dotenv.config();
 
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import saleController from './controllers/saleController';
-import purchaseController from './controllers/purchaseController';
-import { apiLimiter, purchaseLimiter, statusLimiter } from './middleware/rateLimiter';
-import saleService from './services/saleService';
+import { connectDatabase } from './config/database';
+import redisClient from './config/redis';
 
-// Load environment variables
-dotenv.config();
+// Controllers
+import productController from './controllers/productController';
+import cartController from './controllers/cartController';
+import orderController from './controllers/orderController';
+import userController from './controllers/userController';
+import { apiLimiter, purchaseLimiter, statusLimiter } from './middleware/rateLimiter';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,33 +22,70 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Apply rate limiting to all routes
+// Apply rate limiting
 app.use('/api/', apiLimiter);
 
 // Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  });
+app.get('/health', async (req: Request, res: Response) => {
+  try {
+    await redisClient.ping();
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      services: {
+        mongodb: 'connected',
+        redis: 'connected',
+      },
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
-// Sale routes
-app.get('/api/sale/status', statusLimiter, (req, res) => saleController.getStatus(req, res));
-app.post('/api/sale/init', (req, res) => saleController.initializeSale(req, res));
-app.get('/api/sale/stats', (req, res) => saleController.getStats(req, res));
-app.get('/api/sale/user/:userId', (req, res) => saleController.checkUserPurchase(req, res));
+// ==================== PRODUCT ROUTES ====================
+app.get('/api/products', productController.getProducts.bind(productController));
+app.get('/api/products/categories', productController.getCategories.bind(productController));
+app.get('/api/products/slug/:slug', productController.getProductBySlug.bind(productController));
+app.get('/api/products/:id', productController.getProduct.bind(productController));
+app.post('/api/products', productController.createProduct.bind(productController)); // Admin
+app.put('/api/products/:id', productController.updateProduct.bind(productController)); // Admin
+app.delete('/api/products/:id', productController.deleteProduct.bind(productController)); // Admin
 
-// Purchase route
-app.post('/api/sale/purchase', purchaseLimiter, (req, res) => purchaseController.attemptPurchase(req, res));
+// ==================== CART ROUTES ====================
+app.get('/api/cart/:userId', cartController.getCart.bind(cartController));
+app.get('/api/cart/:userId/summary', cartController.getCartSummary.bind(cartController));
+app.post('/api/cart/:userId/items', cartController.addToCart.bind(cartController));
+app.put('/api/cart/:userId/items/:productId', cartController.updateCartItem.bind(cartController));
+app.delete('/api/cart/:userId/items/:productId', cartController.removeFromCart.bind(cartController));
+app.delete('/api/cart/:userId', cartController.clearCart.bind(cartController));
+
+// ==================== ORDER ROUTES ====================
+app.post('/api/orders/checkout', orderController.checkout.bind(orderController));
+app.get('/api/orders/:userId', orderController.getUserOrders.bind(orderController));
+app.get('/api/orders/detail/:orderNumber', orderController.getOrder.bind(orderController));
+app.get('/api/orders/stats/:userId', orderController.getUserStats.bind(orderController));
+app.put('/api/orders/:orderNumber/status', orderController.updateOrderStatus.bind(orderController)); // Admin
+app.post('/api/orders/:orderNumber/cancel', orderController.cancelOrder.bind(orderController));
+
+// ==================== USER ROUTES ====================
+app.post('/api/users/register', userController.register.bind(userController));
+app.post('/api/users/login', userController.login.bind(userController));
+app.get('/api/users/:email', userController.getProfile.bind(userController));
+app.put('/api/users/:email', userController.updateProfile.bind(userController));
+app.get('/api/users/:email/dashboard', userController.getDashboard.bind(userController));
+app.post('/api/users/:email/addresses', userController.addAddress.bind(userController));
+app.delete('/api/users/:email/addresses/:addressId', userController.removeAddress.bind(userController));
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: any) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
     error: 'Internal server error',
-    message: err.message,
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
   });
 });
 
@@ -57,94 +97,63 @@ app.use((req: Request, res: Response) => {
   });
 });
 
-// Initialize default sale
-async function initializeDefaultSale() {
-  console.log('🔍 Checking for existing sale...');
-  
-  try {
-    const status = await saleService.getSaleStatus();
-    console.log('✅ Existing sale found:', status.productName);
-    console.log(`   Stock: ${status.remainingStock}/${status.totalStock}`);
-    console.log(`   Status: ${status.status}`);
-    return true;
-  } catch (error) {
-    console.log('📝 No existing sale found. Creating default sale...');
-    
-    try {
-      const now = new Date();
-      const startTime = new Date(now.getTime() - 5 * 60 * 1000); // Started 5 minutes ago
-      const endTime = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Ends in 24 hours
-
-      await saleService.initializeSale({
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-        totalStock: 100,
-        productName: 'Limited Edition Flash Sale Widget',
-      });
-      
-      console.log('✅ Default sale initialized successfully!');
-      console.log('   Product: Limited Edition Flash Sale Widget');
-      console.log('   Stock: 100');
-      console.log('   Duration: 24 hours');
-      return true;
-    } catch (initError) {
-      console.error('❌ Failed to initialize sale:', initError);
-      return false;
-    }
-  }
-}
-
-// Start server with proper initialization
+// Start server
 async function startServer() {
-  console.log('');
-  console.log('🚀 Starting Flash Sale Server...');
-  console.log('================================');
-  console.log('');
-  
-  // CRITICAL: Initialize sale BEFORE starting server
-  const saleInitialized = await initializeDefaultSale();
-  
-  if (!saleInitialized) {
-    console.error('');
-    console.error('⚠️  WARNING: Sale not initialized!');
-    console.error('   Server will start but /api/sale/status will fail.');
-    console.error('   Run this to initialize manually:');
-    console.error('   curl -X POST http://localhost:' + PORT + '/api/sale/init \\');
-    console.error('     -H "Content-Type: application/json" \\');
-    console.error('     -d \'{"startTime":"2026-02-15T00:00:00Z","endTime":"2026-02-16T23:59:59Z","totalStock":100,"productName":"Test Sale"}\'');
-    console.error('');
-  }
-  
-  // Start listening
-  app.listen(PORT, () => {
+  try {
     console.log('');
-    console.log('================================');
-    console.log(`🎉 Server running on port ${PORT}`);
-    console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🔗 Health: http://localhost:${PORT}/health`);
-    console.log(`📊 API: http://localhost:${PORT}/api`);
-    console.log('================================');
+    console.log('🚀 Starting Enhanced Flash Sale E-Commerce Platform...');
+    console.log('='.repeat(60));
     console.log('');
-    
-    if (saleInitialized) {
-      console.log('✅ Ready to accept requests!');
+
+    // Connect to MongoDB
+    await connectDatabase();
+
+    // Start listening
+    app.listen(PORT, () => {
       console.log('');
-      console.log('Test commands:');
-      console.log(`  curl http://localhost:${PORT}/api/sale/status`);
-      console.log(`  curl -X POST http://localhost:${PORT}/api/sale/purchase -H "Content-Type: application/json" -d '{"userId":"test@example.com"}'`);
-    } else {
-      console.log('⚠️  Initialize sale before making purchases!');
-    }
-    console.log('');
-  });
+      console.log('='.repeat(60));
+      console.log(`🎉 Server running on port ${PORT}`);
+      console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+      console.log(`📊 API base URL: http://localhost:${PORT}/api`);
+      console.log('='.repeat(60));
+      console.log('');
+      console.log('✅ Available Endpoints:');
+      console.log('  Products:  GET    /api/products');
+      console.log('  Product:   GET    /api/products/:id');
+      console.log('  Cart:      GET    /api/cart/:userId');
+      console.log('  Add Item:  POST   /api/cart/:userId/items');
+      console.log('  Checkout:  POST   /api/orders/checkout');
+      console.log('  Orders:    GET    /api/orders/:userId');
+      console.log('  Register:  POST   /api/users/register');
+      console.log('  Login:     POST   /api/users/login');
+      console.log('  Profile:   GET    /api/users/:email');
+      console.log('');
+      console.log('📖 Test Commands:');
+      console.log(`  curl http://localhost:${PORT}/api/products`);
+      console.log(`  curl http://localhost:${PORT}/api/cart/user@test.com`);
+      console.log('');
+    });
+  } catch (error) {
+    console.error('');
+    console.error('❌ Failed to start server:', error);
+    console.error('');
+    process.exit(1);
+  }
 }
 
-// Catch any startup errors
-startServer().catch((error) => {
-  console.error('');
-  console.error('❌ Failed to start server:', error);
-  console.error('');
-  process.exit(1);
+// Handle shutdown gracefully
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  process.exit(0);
 });
+
+process.on('SIGINT', async () => {
+  console.log('\nSIGINT received, shutting down gracefully...');
+  process.exit(0);
+});
+
+// Start the server
+startServer();
 
 export default app;
