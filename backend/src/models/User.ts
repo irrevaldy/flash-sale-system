@@ -161,7 +161,6 @@ const UserSchema = new Schema<IUser>(
 );
 
 // Indexes
-UserSchema.index({ email: 1 });
 UserSchema.index({ 'profile.firstName': 1, 'profile.lastName': 1 });
 
 // Virtual for full name

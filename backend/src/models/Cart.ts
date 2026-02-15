@@ -57,9 +57,7 @@ const CartSchema = new Schema<
     items: { type: [CartItemSchema], default: [] },
     expiresAt: {
       type: Date,
-      default: () =>
-        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      index: true,
+      default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     },
   },
   { timestamps: true }
