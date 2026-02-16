@@ -1,17 +1,16 @@
 // src/App.tsx
-// v3 - Clean structure with CartPage integration
+// v4.0 - With React Router for proper URL navigation
 
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, Link } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ProductCatalogPage } from './pages/ProductCatalogPage';
 import CartPage from './pages/CartPage';
 import FlashSale from './components/FlashSale';
 import { ProfilePage } from './pages/ProfilePage';
-import { cartApi } from './services/api'; // <-- HERE
+import { cartApi } from './services/api';
 import './App.css';
-
-type Page = 'home' | 'login' | 'register' | 'catalog' | 'cart' | 'profile';
 
 interface CartItem {
   id: string;
@@ -21,24 +20,18 @@ interface CartItem {
   quantity: number;
 }
 
-function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('home');
+// Separate component that can use useNavigate
+function AppContent() {
+  const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [toastMessage, setToastMessage] = useState('');
 
-  // ✅ Derived values
-  const cartCount = cartItems.reduce(
-    (total, item) => total + item.quantity,
-    0
-  );
+  // Derived values
+  const cartCount = cartItems.reduce((total, item) => total + item.quantity, 0);
+  const cartTotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
 
-  const cartTotal = cartItems.reduce(
-    (total, item) => total + item.price * item.quantity,
-    0
-  );
-
-  // ✅ Load stored user
+  // Load stored user
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
@@ -46,44 +39,34 @@ function App() {
     }
   }, []);
 
-  // ==============================
-  // AUTH HANDLERS
-  // ==============================
-
+  // ============================== AUTH HANDLERS
   const handleLogin = (userData: any) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
-    setCurrentPage('catalog');
+    navigate('/catalog');
   };
 
   const handleRegister = (userData: any) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
-    setCurrentPage('catalog');
+    navigate('/catalog');
   };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
     setUser(null);
-    setCurrentPage('home');
+    navigate('/');
   };
 
-  // ==============================
-  // CART HANDLERS
-  // ==============================
-
+  // ============================== CART HANDLERS
   const handleAddToCart = (product: any) => {
-    // 1️⃣ Update local cart state
     setCartItems(prev => {
       const existing = prev.find(item => item.id === product._id);
       if (existing) {
         return prev.map(item =>
-          item.id === product._id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
+          item.id === product._id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-
       return [
         ...prev,
         {
@@ -96,36 +79,23 @@ function App() {
       ];
     });
 
-    // 2️⃣ Sync with backend only if user is logged in
     if (user) {
-      cartApi.addItem(user.email, product._id, 1)
-        .catch(err => console.error('Failed to sync cart', err));
+      cartApi.addItem(user.email, product._id, 1).catch(err => console.error('Failed to sync cart', err));
     }
 
-    // 3️⃣ Toast notification
     setToastMessage(`${product.name} added to cart!`);
     setTimeout(() => setToastMessage(''), 2500);
   };
 
   const increaseQuantity = (id: string) => {
     setCartItems(prev =>
-      prev.map(item =>
-        item.id === id
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      )
+      prev.map(item => (item.id === id ? { ...item, quantity: item.quantity + 1 } : item))
     );
   };
 
   const decreaseQuantity = (id: string) => {
     setCartItems(prev =>
-      prev
-        .map(item =>
-          item.id === id
-            ? { ...item, quantity: item.quantity - 1 }
-            : item
-        )
-        .filter(item => item.quantity > 0)
+      prev.map(item => (item.id === id ? { ...item, quantity: item.quantity - 1 } : item)).filter(item => item.quantity > 0)
     );
   };
 
@@ -137,78 +107,49 @@ function App() {
     return user?.email || 'guest@example.com';
   };
 
-  // ==============================
-  // RENDER
-  // ==============================
-
   return (
     <div className="app">
       {toastMessage && <div className="toast">{toastMessage}</div>}
+
       {/* ================= HEADER ================= */}
       <header className="app-header">
         <div className="header-container">
-
-          <div className="logo" onClick={() => setCurrentPage('home')}>
+          <Link to="/" className="logo">
             <img src="/favicon.png" alt="Valdy Store" className="logo-image" />
-          </div>
+          </Link>
 
           <nav className="nav-menu">
-            <button
-              className={currentPage === 'home' ? 'nav-link active' : 'nav-link'}
-              onClick={() => setCurrentPage('home')}
-            >
+            <Link to="/" className="nav-link">
               Home
-            </button>
-
-            <button
-              className={currentPage === 'catalog' ? 'nav-link active' : 'nav-link'}
-              onClick={() => setCurrentPage('catalog')}
-            >
+            </Link>
+            <Link to="/catalog" className="nav-link">
               Shop
-            </button>
+            </Link>
           </nav>
 
           <div className="header-actions">
-
             {/* Cart Button */}
-            <button
-              className="icon-button"
-              onClick={() => setCurrentPage('cart')}
-            >
+            <button className="icon-button" onClick={() => navigate('/cart')}>
               🛒
-              {cartCount > 0 && (
-                <span className="cart-badge">{cartCount}</span>
-              )}
+              {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
             </button>
 
             {/* User Section */}
             {user ? (
               <div className="user-menu">
-                <button
-                  className="user-button"
-                  onClick={() => setCurrentPage('profile')}
-                >
+                <button className="user-button" onClick={() => navigate('/profile')}>
                   👤 {user.profile?.firstName || 'User'}
                 </button>
-                <button
-                  className="btn-logout"
-                  onClick={handleLogout}
-                >
+                <button className="btn-logout" onClick={handleLogout}>
                   Logout
                 </button>
               </div>
             ) : (
               <div className="auth-buttons">
-                <button
-                  className="btn-secondary"
-                  onClick={() => setCurrentPage('login')}
-                >
+                <button className="btn-secondary" onClick={() => navigate('/login')}>
                   Login
                 </button>
-                <button
-                  className="btn-primary"
-                  onClick={() => setCurrentPage('register')}
-                >
+                <button className="btn-primary" onClick={() => navigate('/register')}>
                   Sign Up
                 </button>
               </div>
@@ -217,66 +158,79 @@ function App() {
         </div>
       </header>
 
-      {/* ================= MAIN ================= */}
+      {/* ================= ROUTES ================= */}
       <main className="app-main">
-
-        {currentPage === 'home' && (
-          <div className="home-page">
-            <section className="hero-section">
-              <h1 className="hero-title">Welcome to Valdy Store</h1>
-              <p className="hero-subtitle">
-                Discover amazing deals on electronics and more!
-              </p>
-              <button
-                className="btn-primary btn-large"
-                onClick={() => setCurrentPage('catalog')}
-              >
-                Shop Now →
-              </button>
-            </section>
-
-            <FlashSale 
-              userId={getUserEmail()} 
-              onAddToCart={handleAddToCart} 
-            />
-          </div>
-        )}
-
-        {currentPage === 'login' && (
-          <LoginPage
-            onLoginSuccess={handleLogin}
-            onNavigateToRegister={() => setCurrentPage('register')}
+        <Routes>
+          {/* Home Page */}
+          <Route
+            path="/"
+            element={
+              <div className="home-page">
+                <section className="hero-section">
+                  <h1 className="hero-title">Welcome to Valdy Store</h1>
+                  <p className="hero-subtitle">Discover amazing deals on electronics and more!</p>
+                  <button className="btn-primary btn-large" onClick={() => navigate('/catalog')}>
+                    Shop Now →
+                  </button>
+                </section>
+                <FlashSale userId={getUserEmail()} onAddToCart={handleAddToCart} />
+              </div>
+            }
           />
-        )}
 
-        {currentPage === 'register' && (
-          <RegisterPage
-            onRegisterSuccess={handleRegister}
-            onNavigateToLogin={() => setCurrentPage('login')}
+          {/* Login */}
+          <Route
+            path="/login"
+            element={
+              <LoginPage
+                onLoginSuccess={handleLogin}
+                onNavigateToRegister={() => navigate('/register')}
+              />
+            }
           />
-        )}
 
-        {currentPage === 'catalog' && (
-          <ProductCatalogPage
-            onAddToCart={handleAddToCart}
-            onViewProduct={(id) => console.log('View product:', id)}
+          {/* Register */}
+          <Route
+            path="/register"
+            element={
+              <RegisterPage
+                onRegisterSuccess={handleRegister}
+                onNavigateToLogin={() => navigate('/login')}
+              />
+            }
           />
-        )}
 
-        {currentPage === 'cart' && (
-          <CartPage
-            cartItems={cartItems}
-            cartTotal={cartTotal}
-            onIncrease={increaseQuantity}
-            onDecrease={decreaseQuantity}
-            onRemove={removeFromCart}
+          {/* Catalog */}
+          <Route
+            path="/catalog"
+            element={
+              <ProductCatalogPage
+                onAddToCart={handleAddToCart}
+                onViewProduct={(id) => console.log('View product:', id)}
+              />
+            }
           />
-        )}
 
-        {currentPage === 'profile' && user && (
-          <ProfilePage user={user} />
-        )}
+          {/* Cart */}
+          <Route
+            path="/cart"
+            element={
+              <CartPage
+                cartItems={cartItems}
+                cartTotal={cartTotal}
+                onIncrease={increaseQuantity}
+                onDecrease={decreaseQuantity}
+                onRemove={removeFromCart}
+              />
+            }
+          />
 
+          {/* Profile */}
+          <Route
+            path="/profile"
+            element={user ? <ProfilePage user={user} /> : <LoginPage onLoginSuccess={handleLogin} onNavigateToRegister={() => navigate('/register')} />}
+          />
+        </Routes>
       </main>
 
       {/* ================= FOOTER ================= */}
@@ -285,8 +239,16 @@ function App() {
           <p>&copy; 2026 Valdy Store. All rights reserved.</p>
         </div>
       </footer>
-
     </div>
+  );
+}
+
+// Wrapper with BrowserRouter
+function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }
 
