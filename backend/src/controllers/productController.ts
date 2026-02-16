@@ -1,4 +1,5 @@
 // src/controllers/productController.ts
+// v2.2 - Fixed sorting logic for all sort types
 
 import { Request, Response } from 'express';
 import Product from '../models/Product';
@@ -29,8 +30,15 @@ export class ProductController {
         filter.category = category;
       }
 
+      // Search with regex
       if (search) {
-        filter.$text = { $search: search as string };
+        const searchRegex = new RegExp(search as string, 'i');
+        filter.$or = [
+          { name: searchRegex },
+          { description: searchRegex },
+          { tags: searchRegex },
+          { brand: searchRegex },
+        ];
       }
 
       if (minPrice || maxPrice) {
@@ -42,10 +50,25 @@ export class ProductController {
       // Calculate pagination
       const skip = (Number(page) - 1) * Number(limit);
 
+      // FIXED: Build sort object properly
+      let sortObj: any = {};
+      const sortField = sortBy as string;
+
+      // Handle negative sort fields (e.g., "-price" for descending)
+      if (sortField.startsWith('-')) {
+        const field = sortField.substring(1);
+        sortObj[field] = -1;
+      } else {
+        // Use sortOrder parameter
+        sortObj[sortField] = sortOrder === 'asc' ? 1 : -1;
+      }
+
+      console.log('Sort object:', sortObj); // Debug log
+
       // Execute query
       const [products, total] = await Promise.all([
         Product.find(filter)
-          .sort({ [sortBy as string]: sortOrder === 'asc' ? 1 : -1 })
+          .sort(sortObj)
           .skip(skip)
           .limit(Number(limit))
           .lean(),
@@ -116,7 +139,10 @@ export class ProductController {
     try {
       const { slug } = req.params;
 
-      const product = await Product.findOne({ 'seo.slug': slug, status: 'active' });
+      const product = await Product.findOne({
+        'seo.slug': slug,
+        status: 'active',
+      });
 
       if (!product) {
         res.status(404).json({ error: 'Product not found' });
@@ -139,7 +165,9 @@ export class ProductController {
    */
   async getCategories(req: Request, res: Response): Promise<void> {
     try {
-      const categories = await Product.distinct('category', { status: 'active' });
+      const categories = await Product.distinct('category', {
+        status: 'active',
+      });
       res.json({ categories });
     } catch (error) {
       console.error('Error getting categories:', error);

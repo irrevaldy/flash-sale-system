@@ -1,5 +1,5 @@
 // src/pages/ProductCatalogPage.tsx
-// v3.0 - Cleaned, optimized, cart-ready catalog page
+// v3.1 - Fixed sort options to work correctly with backend
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { productApi } from '../services/api';
@@ -48,9 +48,7 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
     pages: 0,
   });
 
-  /* =============================
-     Load Categories
-  ============================== */
+  /* ============================= Load Categories ============================== */
   useEffect(() => {
     const loadCategories = async () => {
       try {
@@ -64,9 +62,7 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
     loadCategories();
   }, []);
 
-  /* =============================
-     Load Products
-  ============================== */
+  /* ============================= Load Products ============================== */
   const loadProducts = useCallback(async () => {
     setLoading(true);
 
@@ -83,6 +79,8 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
       if (filters.minPrice) params.minPrice = Number(filters.minPrice);
       if (filters.maxPrice) params.maxPrice = Number(filters.maxPrice);
 
+      console.log('API params:', params); // Debug log
+
       const data = await productApi.getAll(params);
 
       setProducts(data.products || []);
@@ -98,14 +96,36 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
     loadProducts();
   }, [loadProducts]);
 
-  /* =============================
-     Handlers
-  ============================== */
+  /* ============================= Handlers ============================== */
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({
       ...prev,
       [key]: value,
+    }));
+
+    setPagination(prev => ({
+      ...prev,
+      page: 1,
+    }));
+  };
+
+  // FIXED: Handle sort change with proper field extraction
+  const handleSortChange = (value: string) => {
+    // value can be "price", "-price", "name", "-rating.average", etc.
+    let sortBy = value;
+    let sortOrder = 'asc';
+
+    // If starts with '-', it's descending
+    if (value.startsWith('-')) {
+      sortBy = value.substring(1);
+      sortOrder = 'desc';
+    }
+
+    setFilters(prev => ({
+      ...prev,
+      sortBy,
+      sortOrder,
     }));
 
     setPagination(prev => ({
@@ -141,9 +161,12 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  /* =============================
-     Render
-  ============================== */
+  /* ============================= Render ============================== */
+
+  // Create current sort value for select
+  const currentSortValue = filters.sortOrder === 'desc' && filters.sortBy !== 'createdAt'
+    ? `-${filters.sortBy}`
+    : filters.sortBy;
 
   return (
     <div className="catalog-page">
@@ -163,10 +186,7 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
           <div className="filter-section">
             <div className="filter-header">
               <h3>Filters</h3>
-              <button
-                className="btn-clear-filters"
-                onClick={handleClearFilters}
-              >
+              <button className="btn-clear-filters" onClick={handleClearFilters}>
                 Clear
               </button>
             </div>
@@ -178,9 +198,7 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
                 type="text"
                 placeholder="Search products..."
                 value={filters.search}
-                onChange={(e) =>
-                  handleFilterChange('search', e.target.value)
-                }
+                onChange={(e) => handleFilterChange('search', e.target.value)}
                 className="filter-search"
               />
             </div>
@@ -190,9 +208,7 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
               <label>Category</label>
               <select
                 value={filters.category}
-                onChange={(e) =>
-                  handleFilterChange('category', e.target.value)
-                }
+                onChange={(e) => handleFilterChange('category', e.target.value)}
                 className="filter-select"
               >
                 <option value="">All Categories</option>
@@ -212,9 +228,7 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
                   type="number"
                   placeholder="Min"
                   value={filters.minPrice}
-                  onChange={(e) =>
-                    handleFilterChange('minPrice', e.target.value)
-                  }
+                  onChange={(e) => handleFilterChange('minPrice', e.target.value)}
                   className="price-input"
                 />
                 <span>-</span>
@@ -222,29 +236,27 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
                   type="number"
                   placeholder="Max"
                   value={filters.maxPrice}
-                  onChange={(e) =>
-                    handleFilterChange('maxPrice', e.target.value)
-                  }
+                  onChange={(e) => handleFilterChange('maxPrice', e.target.value)}
                   className="price-input"
                 />
               </div>
             </div>
 
-            {/* Sort */}
+            {/* FIXED: Sort */}
             <div className="filter-group">
               <label>Sort By</label>
               <select
-                value={filters.sortBy}
-                onChange={(e) =>
-                  handleFilterChange('sortBy', e.target.value)
-                }
+                value={currentSortValue}
+                onChange={(e) => handleSortChange(e.target.value)}
                 className="filter-select"
               >
-                <option value="createdAt">Newest</option>
+                <option value="createdAt">Newest First</option>
                 <option value="price">Price: Low to High</option>
                 <option value="-price">Price: High to Low</option>
                 <option value="name">Name: A-Z</option>
+                <option value="-name">Name: Z-A</option>
                 <option value="-rating.average">Highest Rated</option>
+                <option value="rating.average">Lowest Rated</option>
               </select>
             </div>
           </div>
@@ -255,6 +267,15 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
           <div className="results-header">
             <p className="results-count">
               Showing {products.length} of {pagination.total} products
+              {filters.sortBy !== 'createdAt' && (
+                <span className="sort-indicator">
+                  {' • Sorted by: '}
+                  {filters.sortBy === 'price' && 'Price'}
+                  {filters.sortBy === 'name' && 'Name'}
+                  {filters.sortBy === 'rating.average' && 'Rating'}
+                  {' '}({filters.sortOrder === 'asc' ? 'Ascending' : 'Descending'})
+                </span>
+              )}
             </p>
           </div>
 
@@ -274,9 +295,7 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
                   key={product._id}
                   product={product}
                   onAddToCart={onAddToCart}
-                  onViewDetails={() =>
-                    onViewProduct?.(product._id)
-                  }
+                  onViewDetails={() => onViewProduct?.(product._id)}
                 />
               ))}
             </div>
@@ -288,10 +307,7 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
               <div className="empty-icon">🔍</div>
               <h3>No products found</h3>
               <p>Try adjusting your filters.</p>
-              <button
-                className="btn-primary"
-                onClick={handleClearFilters}
-              >
+              <button className="btn-primary" onClick={handleClearFilters}>
                 Clear Filters
               </button>
             </div>
@@ -302,47 +318,33 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
             <div className="pagination">
               <button
                 className="pagination-btn"
-                onClick={() =>
-                  handlePageChange(pagination.page - 1)
-                }
+                onClick={() => handlePageChange(pagination.page - 1)}
                 disabled={pagination.page === 1}
               >
                 ← Previous
               </button>
 
               <div className="pagination-pages">
-                {Array.from(
-                  { length: Math.min(pagination.pages, 5) },
-                  (_, i) => {
-                    const pageNum = i + 1;
-
-                    return (
-                      <button
-                        key={pageNum}
-                        className={`pagination-page ${
-                          pageNum === pagination.page
-                            ? 'active'
-                            : ''
-                        }`}
-                        onClick={() =>
-                          handlePageChange(pageNum)
-                        }
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  }
-                )}
+                {Array.from({ length: Math.min(pagination.pages, 5) }, (_, i) => {
+                  const pageNum = i + 1;
+                  return (
+                    <button
+                      key={pageNum}
+                      className={`pagination-page ${
+                        pageNum === pagination.page ? 'active' : ''
+                      }`}
+                      onClick={() => handlePageChange(pageNum)}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
               </div>
 
               <button
                 className="pagination-btn"
-                onClick={() =>
-                  handlePageChange(pagination.page + 1)
-                }
-                disabled={
-                  pagination.page === pagination.pages
-                }
+                onClick={() => handlePageChange(pagination.page + 1)}
+                disabled={pagination.page === pagination.pages}
               >
                 Next →
               </button>
@@ -353,3 +355,5 @@ export const ProductCatalogPage: React.FC<ProductCatalogPageProps> = ({
     </div>
   );
 };
+
+export default ProductCatalogPage;
