@@ -87,6 +87,11 @@ function AppContent() {
     setTimeout(() => setToastMessage(''), 2500);
   };
 
+  const handleUserUpdate = (updatedUser: any) => {
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
   const increaseQuantity = (id: string) => {
     setCartItems(prev =>
       prev.map(item => (item.id === id ? { ...item, quantity: item.quantity + 1 } : item))
@@ -228,7 +233,16 @@ function AppContent() {
           {/* Profile */}
           <Route
             path="/profile"
-            element={user ? <ProfilePage user={user} /> : <LoginPage onLoginSuccess={handleLogin} onNavigateToRegister={() => navigate('/register')} />}
+            element={
+              user ? (
+                <ProfilePage 
+                  user={user} 
+                  onUserUpdate={handleUserUpdate}
+                />
+              ) : (
+                <LoginPage onLoginSuccess={handleLogin} onNavigateToRegister={() => navigate('/register')} />
+              )
+            }
           />
         </Routes>
       </main>
