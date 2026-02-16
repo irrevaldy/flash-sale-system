@@ -58,12 +58,10 @@ function HomeProductCarousel({
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
 
-  // Convert vertical wheel to horizontal scroll (works great on mouse)
   const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     const el = trackRef.current;
     if (!el) return;
 
-    // If user is already horizontal scrolling, don't fight it
     const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (delta === 0) return;
 
@@ -331,11 +329,36 @@ function AppContent() {
               </div>
             ) : (
               <div className="auth-buttons">
-                <button className="btn-secondary" onClick={() => navigate('/login')}>
+                {/* Desktop buttons */}
+                <button
+                  className="btn-secondary auth-desktop"
+                  onClick={() => navigate('/login')}
+                >
                   Login
                 </button>
-                <button className="btn-primary" onClick={() => navigate('/register')}>
+
+                <button
+                  className="btn-primary auth-desktop"
+                  onClick={() => navigate('/register')}
+                >
                   Sign Up
+                </button>
+
+                {/* Mobile icons */}
+                <button
+                  className="auth-mobile icon-button"
+                  onClick={() => navigate('/login')}
+                  aria-label="Login"
+                >
+                  🔑
+                </button>
+
+                <button
+                  className="auth-mobile icon-button"
+                  onClick={() => navigate('/register')}
+                  aria-label="Register"
+                >
+                  📝
                 </button>
               </div>
             )}

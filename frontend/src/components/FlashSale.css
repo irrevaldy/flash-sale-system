@@ -52,11 +52,9 @@
 /* ================= GRID ================= */
 
 .products-grid {
-  max-width: 1200px;
-  margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;            /* space between cards */
 }
 
 /* ================= PRODUCT CARD ================= */
@@ -185,29 +183,65 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+
+  /* allow outside click area + scrolling */
+  overflow-y: auto;
+
+  display: block;           /* remove flex centering */
+  padding: 24px;
+
   z-index: 9999;
 }
 
 .flashsale-modal {
-  width: min(1100px, 100%);
-  max-height: 85vh;
+  width: min(900px, 100%);  /* reduced from 1100px */
+  max-height: calc(100vh - 48px);
+
   background: #ffffff;
   border-radius: 14px;
   overflow: hidden;
+
   box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+
   display: flex;
   flex-direction: column;
+
+  margin: 0 auto;           /* center horizontally */
+}
+
+/* scroll inside modal */
+.flashsale-modal-body {
+  padding: 24px 28px;   /* add space on all sides */
+  overflow-y: auto;
+}
+
+/* MOBILE FIX */
+@media (max-width: 768px) {
+  .flashsale-modal-overlay {
+    padding: 14px;          /* ensures outside click area */
+  }
+
+  .flashsale-modal {
+    width: 100%;
+    max-height: calc(100vh - 28px);
+    border-radius: 12px;
+  }
+
+  .flashsale-modal-body {
+    padding: 18px;
+  }
+
+  .products-grid {
+    gap: 16px;
+  }
 }
 
 .flashsale-modal-header {
+  position: relative;        /* REQUIRED */
   display: flex;
-  justify-content: center;   /* center horizontally */
+  justify-content: center;   /* keep title centered */
   align-items: center;
-  text-align: center;        /* center text */
+  text-align: center;
   padding: 20px 16px;
   border-bottom: 1px solid #e5e7eb;
 }
@@ -225,22 +259,34 @@
 }
 
 .flashsale-close {
+  position: absolute;        /* move independently */
+  top: 16px;
+  right: 16px;
+
   border: none;
   background: #f3f4f6;
+
   width: 40px;
   height: 40px;
+
   border-radius: 10px;
   cursor: pointer;
+
   font-size: 18px;
+  font-weight: 700;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  line-height: 1;
+  padding: 0;
+
+  transition: background 0.2s;
 }
 
 .flashsale-close:hover {
   background: #e5e7eb;
-}
-
-.flashsale-modal-body {
-  padding: 16px 18px;
-  overflow: auto;
 }
 
 .flashsale-modal-footer {

@@ -196,6 +196,10 @@ const FlashSale: React.FC<FlashSaleProps> = ({ isOpen, onClose, onAddToCart }) =
             <h2 className="flashsale-title">Flash Sale</h2>
             <p className="flashsale-subtitle">Limited-time deals — grab them before they reset.</p>
           </div>
+
+          <button className="flashsale-close" onClick={closeAndReset} aria-label="Close">
+            ✕
+          </button>
         </div>
 
         {message && <div className="success-message">{message}</div>}
