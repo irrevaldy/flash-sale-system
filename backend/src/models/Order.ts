@@ -1,79 +1,198 @@
 // src/models/Order.ts
+// v2.2 - FIXED: Removed duplicate index warnings
 
-import mongoose, { Schema, Model } from 'mongoose';
+import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IOrderItem {
   productId: mongoose.Types.ObjectId;
+  productSnapshot: {
+    name: string;
+    sku: string;
+    image: string;
+  };
   quantity: number;
-  price: number;
+  pricePerUnit: number;
+  flashSaleId?: mongoose.Types.ObjectId;
+  discountAmount: number;
 }
 
-export interface IOrder {
+export interface IOrder extends Document {
+  orderNumber: string;
   userId: string;
+  status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
   items: IOrderItem[];
-  totalAmount: number;
-  status: 'pending' | 'paid' | 'shipped' | 'completed' | 'cancelled';
-  notes?: string;
+  pricing: {
+    subtotal: number;
+    discount: number;
+    tax: number;
+    shipping: number;
+    total: number;
+  };
+  shipping: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    address: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  payment: {
+    method: string;
+    status: 'pending' | 'paid' | 'failed' | 'refunded';
+    transactionId?: string;
+    paidAt?: Date;
+  };
+  timeline: Array<{
+    status: string;
+    timestamp: Date;
+    note?: string;
+  }>;
   createdAt: Date;
   updatedAt: Date;
-}
 
-export interface IOrderMethods {
-  updateStatus(
-    status: IOrder['status'],
-    note?: string
-  ): void;
+  // Methods
+  updateStatus(newStatus: string, note?: string): void;
 }
-
-type OrderModel = Model<
-  IOrder,
-  {},
-  IOrderMethods
->;
 
 const OrderItemSchema = new Schema<IOrderItem>({
-  productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
-  quantity: { type: Number, required: true, min: 1 },
-  price: { type: Number, required: true, min: 0 },
+  productId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Product',
+    required: true,
+  },
+  productSnapshot: {
+    name: { type: String, required: true },
+    sku: { type: String, required: true },
+    image: { type: String, required: true },
+  },
+  quantity: {
+    type: Number,
+    required: true,
+    min: 1,
+  },
+  pricePerUnit: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  flashSaleId: {
+    type: Schema.Types.ObjectId,
+    ref: 'FlashSale',
+  },
+  discountAmount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
 });
 
-const OrderSchema = new Schema<
-  IOrder,
-  OrderModel,
-  IOrderMethods
->(
+const OrderSchema = new Schema<IOrder>(
   {
-    userId: { type: String, required: true, index: true },
-    items: { type: [OrderItemSchema], required: true },
-    totalAmount: { type: Number, required: true, min: 0 },
+    orderNumber: {
+      type: String,
+      required: true,
+      unique: true,  // This creates an index, so we don't need schema.index() for it
+      uppercase: true,
+    },
+    userId: {
+      type: String,
+      required: true,
+      // Removed index: true to use compound index below
+    },
     status: {
       type: String,
-      enum: ['pending', 'paid', 'shipped', 'completed', 'cancelled'],
+      enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
       default: 'pending',
-      index: true,
+      // Removed index: true to use compound index below
     },
-    notes: { type: String },
+    items: {
+      type: [OrderItemSchema],
+      required: true,
+      validate: {
+        validator: function (items: IOrderItem[]) {
+          return items.length > 0;
+        },
+        message: 'Order must have at least one item',
+      },
+    },
+    pricing: {
+      subtotal: { type: Number, required: true, min: 0 },
+      discount: { type: Number, default: 0, min: 0 },
+      tax: { type: Number, default: 0, min: 0 },
+      shipping: { type: Number, default: 0, min: 0 },
+      total: { type: Number, required: true, min: 0 },
+    },
+    shipping: {
+      firstName: { type: String, required: true },
+      lastName: { type: String, required: true },
+      email: { type: String, required: true },
+      phone: { type: String, required: true },
+      address: { type: String, required: true },
+      city: { type: String, required: true },
+      state: { type: String, required: true },
+      zipCode: { type: String, required: true },
+      country: { type: String, required: true, default: 'USA' },
+    },
+    payment: {
+      method: {
+        type: String,
+        required: true,
+        enum: ['credit_card', 'debit_card', 'paypal', 'cod'],
+      },
+      status: {
+        type: String,
+        enum: ['pending', 'paid', 'failed', 'refunded'],
+        default: 'pending',
+      },
+      transactionId: String,
+      paidAt: Date,
+    },
+    timeline: {
+      type: [
+        {
+          status: { type: String, required: true },
+          timestamp: { type: Date, required: true, default: Date.now },
+          note: String,
+        },
+      ],
+      default: [],
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-/* =======================
-   METHODS
-======================= */
+// Compound indexes (more efficient than separate indexes)
+OrderSchema.index({ userId: 1, createdAt: -1 });  // For user order history
+OrderSchema.index({ status: 1, createdAt: -1 });  // For order filtering by status
 
-OrderSchema.methods.updateStatus = function (
-  this: IOrder,
-  status: IOrder['status'],
-  note?: string
-) {
-  this.status = status;
+// Note: orderNumber already has a unique index from the schema definition above
+// so we don't need: OrderSchema.index({ orderNumber: 1 });
 
-  if (note) {
-    this.notes = note;
+// Pre-save hook to add initial timeline entry
+OrderSchema.pre('save', function (next) {
+  if (this.isNew && this.timeline.length === 0) {
+    this.timeline.push({
+      status: this.status,
+      timestamp: new Date(),
+      note: 'Order created',
+    });
   }
+  next();
+});
+
+// Method to update order status
+OrderSchema.methods.updateStatus = function (newStatus: string, note?: string) {
+  this.status = newStatus;
+  this.timeline.push({
+    status: newStatus,
+    timestamp: new Date(),
+    note,
+  });
 };
 
-export default mongoose.model<IOrder, OrderModel>(
-  'Order',
-  OrderSchema
-);
+export default mongoose.model<IOrder>('Order', OrderSchema);

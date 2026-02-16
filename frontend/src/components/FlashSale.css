@@ -61,37 +61,12 @@
 
 /* ================= PRODUCT CARD ================= */
 
-.product-card {
-  background: #ffffff;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
-  transition: 0.25s ease;
-  position: relative;
-
-  display: flex;
-  flex-direction: column;
-}
-
 .product-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
 }
 
 /* ================= DISCOUNT BADGE ================= */
-
-.discount-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: #ef4444;
-  color: white;
-  padding: 5px 10px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 20px;
-}
 
 /* ================= IMAGE ================= */
 
@@ -203,4 +178,107 @@
   text-align: center;
   color: #6b7280;
   font-size: 1.1rem;
+}
+
+/* FlashSale Modal Popup */
+.flashsale-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 9999;
+}
+
+.flashsale-modal {
+  width: min(1100px, 100%);
+  max-height: 85vh;
+  background: #ffffff;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.flashsale-modal-header {
+  display: flex;
+  justify-content: center;   /* center horizontally */
+  align-items: center;
+  text-align: center;        /* center text */
+  padding: 20px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.flashsale-title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.flashsale-subtitle {
+  margin-top: 6px;
+  font-size: 0.95rem;
+  color: #6b7280;
+}
+
+.flashsale-close {
+  border: none;
+  background: #f3f4f6;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.flashsale-close:hover {
+  background: #e5e7eb;
+}
+
+.flashsale-modal-body {
+  padding: 16px 18px;
+  overflow: auto;
+}
+
+.flashsale-modal-footer {
+  padding: 12px 18px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Deal ended state */
+.deal-timer.ended {
+  background: rgba(107, 114, 128, 0.95);
+}
+
+.product-card { position: relative; overflow: hidden; }
+
+.deal-timer{
+  position:absolute; top:12px; left:12px; z-index:3;
+  padding:6px 10px; border-radius:999px;
+  font-weight:800; font-size:.82rem;
+  background:rgba(17,24,39,.92); color:#fff;
+}
+.deal-timer.urgent{ background:rgba(239,68,68,.95); }
+
+.discount-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+
+  background: #ef4444;
+  color: white;
+
+  padding: 6px 14px;
+  border-radius: 999px;
+
+  font-weight: 700;
+  font-size: 0.85rem;
+
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
