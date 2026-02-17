@@ -50,7 +50,6 @@ export class ProductController {
       // Calculate pagination
       const skip = (Number(page) - 1) * Number(limit);
 
-      // FIXED: Build sort object properly
       let sortObj: any = {};
       const sortField = sortBy as string;
 
@@ -62,8 +61,6 @@ export class ProductController {
         // Use sortOrder parameter
         sortObj[sortField] = sortOrder === 'asc' ? 1 : -1;
       }
-
-      console.log('Sort object:', sortObj); // Debug log
 
       // Execute query
       const [products, total] = await Promise.all([

@@ -16,6 +16,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .fsc-title-row {
@@ -48,251 +50,273 @@
   animation: fsc-pulse 1.5s infinite;
 }
 
+.fsc-upcoming-badge {
+  background: #f97316;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
 @keyframes fsc-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  50%       { opacity: 0.55; }
 }
 
-/* ── Scroll buttons ── */
-.fsc-scroll-btns {
-  display: flex;
-  gap: 8px;
-}
-
-.fsc-scroll-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid #e5e7eb;
-  background: white;
-  font-size: 1.3rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #374151;
-  transition: all 0.2s;
-  padding: 0;
-  line-height: 1;
-}
-
-.fsc-scroll-btn:hover {
-  border-color: #ef4444;
-  color: #ef4444;
-  background: #fff5f5;
-}
-
-/* ── Track: 5 cards visible, scrollable ── */
-.fsc-track {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, calc(20% - 13px));
-  grid-auto-flow: column;
-  grid-auto-columns: calc(20% - 13px);
-  gap: 16px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  padding-bottom: 4px;
-}
-
-.fsc-track::-webkit-scrollbar {
-  display: none;
-}
-
-/* ── Card ── */
-.fsc-card {
-  min-width: 0;
-  scroll-snap-align: start;
-  background: white;
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07);
-  transition: transform 0.25s, box-shadow 0.25s;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  cursor: pointer;
-  border: 2px solid transparent;
-}
-
-.fsc-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 10px 28px rgba(239, 68, 68, 0.15);
-  border-color: #fecaca;
-}
-
-/* ── Discount badge ── */
-.fsc-discount-badge {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 3;
-  background: #ef4444;
+/* ── Countdown ── */
+.fsc-countdown {
+  background: linear-gradient(135deg, #f97316, #ef4444);
   color: white;
-  padding: 4px 10px;
+  padding: 6px 16px;
   border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
 }
 
-/* ── Countdown timer ── */
-.fsc-timer {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 3;
-
-  background: rgba(249, 115, 22, 0.95);
-  color: white;
-
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 700;
+.fsc-countdown strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
 }
 
-.fsc-timer.urgent {
-  background: rgba(239, 68, 68, 0.95);
+.fsc-countdown.urgent {
   animation: fsc-pulse 1s infinite;
+  box-shadow: 0 2px 12px rgba(239, 68, 68, 0.55);
+}
+
+.fsc-countdown.upcoming {
+  background: linear-gradient(135deg, #f97316, #eab308);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.35);
+}
+
+/* ── Feedback ── */
+.fsc-feedback {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+.fsc-feedback-success { background: #d1fae5; color: #065f46; }
+.fsc-feedback-error   { background: #fee2e2; color: #b91c1c; }
+
+/* ── Single product card ── */
+.fsc-single-card {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 28px;
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 2px solid #fee2e2;
 }
 
 /* ── Image ── */
-.fsc-image-wrap {
-  width: 100%;
-  height: 160px;
+.fsc-single-image-wrap {
+  position: relative;
   overflow: hidden;
   background: #f3f4f6;
-  flex-shrink: 0;
+  cursor: pointer;
+  height: 280px;
 }
 
-.fsc-image {
+.fsc-single-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
 }
 
-.fsc-card:hover .fsc-image {
-  transform: scale(1.06);
+.fsc-single-image-wrap:hover .fsc-single-image {
+  transform: scale(1.04);
 }
 
-/* ── Card body ── */
-.fsc-card-body {
-  padding: 12px;
+/* ── Discount badge ── */
+.fsc-discount-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  background: #ef4444;
+  color: white;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* ── Info panel ── */
+.fsc-single-info {
+  padding: 24px 24px 24px 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  flex: 1;
+  gap: 14px;
+  justify-content: center;
 }
 
 /* ── Category badge ── */
 .fsc-category-badge {
   display: inline-block;
-  padding: 3px 10px;
+  padding: 4px 12px;
+  background: #dbeafe;
+  color: #1d4ed8;
   border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.5px;
   align-self: flex-start;
 }
 
-/* ── Name ── */
-.fsc-name {
-  font-size: 0.9rem;
-  font-weight: 600;
+/* ── Product name ── */
+.fsc-single-name {
+  font-size: 1.4rem;
+  font-weight: 700;
   color: #111827;
-  line-height: 1.4;
-  display: -webkit-box;
-  line-clamp: 2;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-height: 1.3;
+  cursor: pointer;
 }
 
-/* ── Price row ── */
-.fsc-price-row {
+.fsc-single-name:hover { color: #2563eb; }
+
+/* ── Pricing ── */
+.fsc-single-pricing {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin-top: auto;
+  gap: 12px;
 }
 
-.fsc-price {
-  font-size: 1.1rem;
-  font-weight: 700;
+.fsc-flash-price {
+  font-size: 2rem;
+  font-weight: 800;
   color: #ef4444;
 }
 
 .fsc-compare {
-  font-size: 0.82rem;
+  font-size: 1rem;
   color: #9ca3af;
   text-decoration: line-through;
 }
 
-/* ── Add to cart button ── */
-.fsc-btn-add {
+/* ── Stock bar ── */
+.fsc-stock-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fsc-stock-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.fsc-stock-bar {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.fsc-stock-fill {
+  height: 100%;
+  background: #22c55e;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+.fsc-stock-fill.low      { background: #f97316; }
+.fsc-stock-fill.critical { background: #ef4444; animation: fsc-pulse 1s infinite; }
+
+/* ── Rules ── */
+.fsc-rules {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: #6b7280;
+}
+
+/* ── Buy button ── */
+.fsc-buy-btn {
   width: 100%;
-  padding: 8px 0;
-  background: #ef4444;
+  padding: 14px;
+  background: linear-gradient(135deg, #f97316, #ef4444);
   color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 0.82rem;
-  font-weight: 600;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.18s;
-  margin-top: auto;
+  transition: all 0.2s;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
 }
 
-.fsc-btn-add:hover:not(:disabled) {
-  background: #dc2626;
-  transform: translateY(-1px);
+.fsc-buy-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
 }
 
-.fsc-btn-add:disabled {
+.fsc-buy-btn:disabled {
   background: #d1d5db;
   color: #6b7280;
   cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
 }
 
-/* ── Tablet: 3 visible ── */
-@media (max-width: 1024px) {
-  .fsc-track {
-    grid-auto-columns: calc(33.333% - 11px);
+/* ── Already purchased ── */
+.fsc-already-purchased {
+  padding: 14px;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 10px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ── Tablet ── */
+@media (max-width: 900px) {
+  .fsc-single-card {
+    grid-template-columns: 240px 1fr;
+  }
+
+  .fsc-single-image-wrap {
+    height: 240px;
   }
 }
 
-/* ── Mobile: 2 visible ── */
+/* ── Mobile ── */
 @media (max-width: 640px) {
   .fsc-section {
-    padding: 0 12px 8px;
+    padding: 16px 12px 8px;
   }
 
-  .fsc-title {
-    font-size: 1.15rem;
+  .fsc-single-card {
+    grid-template-columns: 1fr;
   }
 
-  .fsc-track {
-    grid-auto-columns: calc(50% - 8px);
-    gap: 10px;
+  .fsc-single-image-wrap {
+    height: 220px;
   }
 
-  .fsc-image-wrap {
-    height: 120px;
+  .fsc-single-info {
+    padding: 16px;
+    gap: 12px;
   }
 
-  .fsc-card-body {
-    padding: 10px;
-    gap: 6px;
+  .fsc-single-name {
+    font-size: 1.1rem;
   }
 
-  .fsc-name {
-    font-size: 0.82rem;
+  .fsc-flash-price {
+    font-size: 1.6rem;
   }
 
-  .fsc-price {
-    font-size: 1rem;
+  .fsc-countdown {
+    font-size: 0.78rem;
   }
 }

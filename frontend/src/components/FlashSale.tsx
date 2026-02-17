@@ -1,279 +1,329 @@
 // src/components/FlashSale.tsx
-// v2.4 - Added category badges + click to navigate to product detail
+// v3.0 - Single product, real purchase flow, enforced rules
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { productApi } from '../services/api';
+import { flashSaleApi } from '../services/api';
 import './FlashSale.css';
 
-interface Product {
+interface FlashSaleProduct {
   _id: string;
   name: string;
-  price: number;
-  compareAtPrice?: number;
   images: string[];
   category?: string;
-  inventory: {
-    availableStock: number;
-  };
+  originalPrice: number;
+  flashPrice: number;
+}
+
+interface SaleStatus {
+  status: 'upcoming' | 'active' | 'ended';
+  startTime: string;
+  endTime: string;
+  totalStock: number;
+  remaining: number;
+  soldOut: boolean;
+  flashPrice: number;
+  product: FlashSaleProduct | null;
 }
 
 interface FlashSaleProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddToCart: (product: Product) => void;
+  user: any; // logged-in user from App.tsx
 }
 
-type DealMap = Record<string, number>;
+// ── Countdown timer ──
+function useCountdown(targetTime: string | null) {
+  const [timeLeft, setTimeLeft] = useState(0);
 
-const MIN_MINUTES = 3;
-const MAX_MINUTES = 15;
+  useEffect(() => {
+    if (!targetTime) return;
+    const update = () => setTimeLeft(Math.max(0, new Date(targetTime).getTime() - Date.now()));
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, [targetTime]);
 
-const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
-  electronics: { bg: '#dbeafe', text: '#1d4ed8' },
-  fashion:     { bg: '#fce7f3', text: '#be185d' },
-  home:        { bg: '#d1fae5', text: '#065f46' },
-  sports:      { bg: '#ffedd5', text: '#c2410c' },
-  beauty:      { bg: '#ede9fe', text: '#6d28d9' },
-  books:       { bg: '#fef9c3', text: '#92400e' },
-  toys:        { bg: '#fee2e2', text: '#b91c1c' },
-  food:        { bg: '#dcfce7', text: '#15803d' },
-};
+  const h = Math.floor(timeLeft / 3_600_000);
+  const m = Math.floor((timeLeft % 3_600_000) / 60_000);
+  const s = Math.floor((timeLeft % 60_000) / 1000);
 
-function getCategoryStyle(category?: string) {
-  const key = category?.toLowerCase() || '';
-  return CATEGORY_COLORS[key] || { bg: '#f3f4f6', text: '#374151' };
+  return {
+    timeLeft,
+    formatted: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
+  };
 }
 
-function pseudoRandomFromId(id: string) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return (h % 10000) / 10000;
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function formatMMSS(ms: number) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-function generateExpiry(productId: string) {
-  const r = pseudoRandomFromId(productId + String(Date.now()));
-  const minutesRaw = MIN_MINUTES + Math.round(r * (MAX_MINUTES - MIN_MINUTES));
-  const minutes = clamp(minutesRaw, MIN_MINUTES, MAX_MINUTES);
-  const secondsJitter = Math.floor(r * 59);
-  return Date.now() + minutes * 60_000 + secondsJitter * 1000;
-}
-
-const FlashSale: React.FC<FlashSaleProps> = ({ isOpen, onClose, onAddToCart }) => {
+const FlashSale: React.FC<FlashSaleProps> = ({ isOpen, onClose, user }) => {
   const navigate = useNavigate();
 
-  const [products, setProducts] = useState<Product[]>([]);
+  const [saleStatus, setSaleStatus] = useState<SaleStatus | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [now, setNow] = useState(Date.now());
-  const [dealMap, setDealMap] = useState<DealMap>({});
+  const [purchasing, setPurchasing] = useState(false);
+  const [hasPurchased, setHasPurchased] = useState(false);
+  const [purchasedAt, setPurchasedAt] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Lock body scroll + ESC close
+  // Countdown targets
+  const startCountdown = useCountdown(
+    saleStatus?.status === 'upcoming' ? saleStatus.startTime : null
+  );
+  const endCountdown = useCountdown(
+    saleStatus?.status === 'active' ? saleStatus.endTime : null
+  );
+
+  // Lock body scroll + ESC
   useEffect(() => {
     if (!isOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKeyDown);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
-      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keydown', onKey);
     };
   }, [isOpen, onClose]);
 
-  // Tick now
-  useEffect(() => {
-    if (!isOpen) return;
-    const t = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(t);
-  }, [isOpen]);
+  // Load status when modal opens
+  const loadStatus = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await flashSaleApi.getStatus();
+      setSaleStatus(data);
 
-  // Load products on open
-  useEffect(() => {
-    if (!isOpen) return;
-    const loadProducts = async () => {
-      try {
-        setError('');
-        setMessage('');
-        setLoading(true);
-        const data = await productApi.getAll({ limit: 10 });
-        const list: Product[] = data.products || [];
-        setProducts(list);
-        const fresh: DealMap = {};
-        list.forEach((p) => { fresh[p._id] = generateExpiry(p._id); });
-        setDealMap(fresh);
-      } catch (err) {
-        console.error(err);
-        setError('Failed to load products');
-      } finally {
-        setLoading(false);
+      // Check if logged-in user already purchased
+      if (user?.email) {
+        const check = await flashSaleApi.checkPurchase(user.email);
+        setHasPurchased(check.hasPurchased);
+        if (check.purchase?.purchasedAt) setPurchasedAt(check.purchase.purchasedAt);
       }
-    };
-    loadProducts();
-  }, [isOpen]);
+    } catch (err) {
+      console.error('Failed to load flash sale status', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.email]);
 
-  // Auto-reset expired timers
   useEffect(() => {
     if (!isOpen) return;
-    const t = window.setInterval(() => {
-      setDealMap((prev) => {
-        if (!prev || Object.keys(prev).length === 0) return prev;
-        const next: DealMap = { ...prev };
-        let changed = false;
-        for (const productId of Object.keys(next)) {
-          if (Date.now() >= next[productId]) {
-            next[productId] = generateExpiry(productId);
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      });
-    }, 1000);
-    return () => window.clearInterval(t);
-  }, [isOpen]);
+    loadStatus();
 
-  const dealInfoById = useMemo(() => {
-    const map: Record<string, { remaining: number; label: string; isUrgent: boolean }> = {};
-    products.forEach((p) => {
-      const end = dealMap[p._id] || 0;
-      const safeRemaining = Math.max(0, end - now);
-      map[p._id] = {
-        remaining: safeRemaining,
-        label: `${formatMMSS(safeRemaining)}`,
-        isUrgent: safeRemaining > 0 && safeRemaining <= 60_000,
-      };
-    });
-    return map;
-  }, [products, dealMap, now]);
+    // Poll every 10s to keep stock count fresh
+    const t = setInterval(loadStatus, 10_000);
+    return () => clearInterval(t);
+  }, [isOpen, loadStatus]);
 
-  const handleAdd = (e: React.MouseEvent, product: Product) => {
-    e.stopPropagation(); // don't navigate when clicking Add to Cart
-    onAddToCart(product);
-    setMessage(`${product.name} added to cart!`);
-    setTimeout(() => setMessage(''), 2000);
-  };
+  const handleBuy = async () => {
+    if (!user?.email) {
+      onClose();
+      navigate('/login');
+      return;
+    }
 
-  const handleCardClick = (product: Product) => {
-    onClose();
-    navigate(`/products/${product._id}`);
-  };
+    setPurchasing(true);
+    setFeedback(null);
 
-  const closeAndReset = () => {
-    setDealMap({});
-    onClose();
+    try {
+      const result = await flashSaleApi.reserve(user.email);
+
+      if (result.success) {
+        const product = saleStatus!.product!;
+        onClose();
+        navigate('/checkout?flashSale=true', {
+          state: {
+            flashSaleItem: {
+              _id:         product._id,
+              name:        product.name,
+              price:       saleStatus!.flashPrice,
+              images:      product.images,
+              quantity:    1,
+              isFlashSale: true,
+            },
+          },
+        });
+      }
+    } catch (err: any) {
+      const data = err?.response?.data;
+      if (data?.alreadyPurchased) {
+        setHasPurchased(true);
+        setFeedback({ type: 'error', message: 'You have already purchased this item.' });
+      } else if (data?.soldOut) {
+        setFeedback({ type: 'error', message: 'Sold out! All items have been claimed.' });
+        loadStatus();
+      } else {
+        setFeedback({ type: 'error', message: data?.error || 'Could not reserve item. Try again.' });
+      }
+    } finally {
+      setPurchasing(false);
+    }
   };
 
   if (!isOpen) return null;
 
+  const product = saleStatus?.product;
+  const discount = product
+    ? Math.round(((product.originalPrice - product.flashPrice) / product.originalPrice) * 100)
+    : 0;
+  const stockPercent = saleStatus
+    ? Math.round((saleStatus.remaining / saleStatus.totalStock) * 100)
+    : 100;
+
   return (
-    <div className="flashsale-modal-overlay" onClick={closeAndReset} role="presentation">
+    <div className="flashsale-modal-overlay" onClick={onClose} role="presentation">
       <div
         className="flashsale-modal"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Flash sale popup"
       >
-        {/* Header */}
+        {/* ── Header ── */}
         <div className="flashsale-modal-header">
           <div>
             <h2 className="flashsale-title">⚡ Flash Sale</h2>
-            <p className="flashsale-subtitle">Limited-time deals — grab them before they reset.</p>
+            {saleStatus?.status === 'active' && (
+              <p className="flashsale-subtitle">
+                Ends in <strong className="fs-countdown">{endCountdown.formatted}</strong>
+              </p>
+            )}
+            {saleStatus?.status === 'upcoming' && (
+              <p className="flashsale-subtitle">
+                Starts in <strong className="fs-countdown">{startCountdown.formatted}</strong>
+              </p>
+            )}
+            {saleStatus?.status === 'ended' && (
+              <p className="flashsale-subtitle">This sale has ended.</p>
+            )}
           </div>
-          <button className="flashsale-close" onClick={closeAndReset} aria-label="Close">✕</button>
+          <button className="flashsale-close" onClick={onClose}>✕</button>
         </div>
 
-        {message && <div className="success-message">{message}</div>}
+        {/* ── Status banner ── */}
+        {saleStatus && (
+          <div className={`fs-status-banner fs-status-${saleStatus.status}`}>
+            {saleStatus.status === 'upcoming' && '🕐 Sale not started yet'}
+            {saleStatus.status === 'active'   && '🟢 Sale is LIVE now!'}
+            {saleStatus.status === 'ended'    && '🔴 Sale has ended'}
+          </div>
+        )}
 
-        {/* Body */}
+        {/* ── Feedback message ── */}
+        {feedback && (
+          <div className={`fs-feedback fs-feedback-${feedback.type}`}>
+            {feedback.message}
+          </div>
+        )}
+
         <div className="flashsale-modal-body">
-          {loading && <p className="loading">Loading products...</p>}
-          {!loading && error && <p className="error-message">{error}</p>}
+          {loading && !saleStatus && (
+            <div className="fs-loading">Loading sale info...</div>
+          )}
 
-          {!loading && !error && (
-            <div className="products-grid">
-              {products.length === 0 && (
-                <div className="empty-state">No products available at the moment.</div>
-              )}
+          {saleStatus && product && (
+            <div className="fs-product-card">
+              {/* Image */}
+              <div className="fs-product-image-wrap">
+                {discount > 0 && (
+                  <div className="fs-product-discount">{discount}% OFF</div>
+                )}
+                <img
+                  src={product.images?.[0] || 'https://via.placeholder.com/400x300'}
+                  alt={product.name}
+                  className="fs-product-image"
+                  onClick={() => { onClose(); navigate(`/products/${product._id}`); }}
+                />
+              </div>
 
-              {products.map((product) => {
-                const discount = product.compareAtPrice
-                  ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
-                  : 0;
-                const outOfStock = product.inventory.availableStock === 0;
-                const deal = dealInfoById[product._id];
-                const catStyle = getCategoryStyle(product.category);
+              {/* Info */}
+              <div className="fs-product-info">
+                {product.category && (
+                  <span className="fs-product-category">{product.category}</span>
+                )}
+                <h3 className="fs-product-name">{product.name}</h3>
 
-                return (
-                  <div
-                    key={product._id}
-                    className="product-card"
-                    onClick={() => handleCardClick(product)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {/* Discount badge */}
-                    {discount > 0 && (
-                      <div className="discount-badge">{discount}% OFF</div>
-                    )}
+                <div className="fs-product-pricing">
+                  <span className="fs-flash-price">${saleStatus.flashPrice.toFixed(2)}</span>
+                  {product.originalPrice > saleStatus.flashPrice && (
+                    <span className="fs-original-price">${product.originalPrice.toFixed(2)}</span>
+                  )}
+                </div>
 
-                    {/* Countdown timer */}
-                    {deal && (
-                      <div className={`deal-timer ${deal.isUrgent ? 'urgent' : ''}`}>
-                        ⏱ {deal.label}
-                      </div>
-                    )}
-
-                    {/* Image */}
-                    <img
-                      src={product.images?.[0] || 'https://via.placeholder.com/300x200'}
-                      alt={product.name}
-                      className="product-image"
-                    />
-
-                    <div className="product-info">
-                      {/* Category badge */}
-                      {product.category && (
-                        <span
-                          className="fs-category-badge"
-                          style={{ backgroundColor: catStyle.bg, color: catStyle.text }}
-                        >
-                          {product.category.charAt(0).toUpperCase() + product.category.slice(1)}
-                        </span>
-                      )}
-
-                      <h3 className="product-name">{product.name}</h3>
-
-                      <div className="product-pricing">
-                        <span className="current-price">${product.price.toFixed(2)}</span>
-                        {product.compareAtPrice && (
-                          <span className="original-price">${product.compareAtPrice.toFixed(2)}</span>
-                        )}
-                      </div>
-
-                      <button
-                        className="buy-button"
-                        disabled={outOfStock}
-                        onClick={(e) => handleAdd(e, product)}
-                      >
-                        {outOfStock ? 'Out of Stock' : '🛒 Add to Cart'}
-                      </button>
-                    </div>
+                {/* Stock bar */}
+                <div className="fs-stock-section">
+                  <div className="fs-stock-label">
+                    <span>
+                      {saleStatus.soldOut
+                        ? '😔 Sold out'
+                        : `${saleStatus.remaining} of ${saleStatus.totalStock} remaining`}
+                    </span>
+                    <span className="fs-stock-pct">{stockPercent}%</span>
                   </div>
-                );
-              })}
+                  <div className="fs-stock-bar">
+                    <div
+                      className={`fs-stock-fill ${stockPercent <= 20 ? 'critical' : stockPercent <= 50 ? 'low' : ''}`}
+                      style={{ width: `${stockPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Rules */}
+                <div className="fs-rules">
+                  <span>⚡ One item per user</span>
+                  <span>🔒 Verified purchases only</span>
+                </div>
+
+                {/* Buy button */}
+                {hasPurchased ? (
+                  <div className="fs-already-purchased">
+                    ✅ You secured this item!
+                    {purchasedAt && (
+                      <span className="fs-purchased-at">
+                        {new Date(purchasedAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    className="fs-buy-btn"
+                    onClick={handleBuy}
+                    disabled={
+                      purchasing ||
+                      saleStatus.status !== 'active' ||
+                      saleStatus.soldOut
+                    }
+                  >
+                    {purchasing
+                      ? 'Processing...'
+                      : saleStatus.status === 'upcoming'
+                      ? '⏳ Sale Not Started'
+                      : saleStatus.status === 'ended'
+                      ? '❌ Sale Ended'
+                      : saleStatus.soldOut
+                      ? '😔 Sold Out'
+                      : !user
+                      ? '🔑 Login to Buy'
+                      : '⚡ Buy Now'}
+                  </button>
+                )}
+
+                {!user && saleStatus.status === 'active' && !hasPurchased && (
+                  <p className="fs-login-hint">
+                    <button className="btn-link" onClick={() => { onClose(); navigate('/login'); }}>
+                      Login
+                    </button>{' '}
+                    or{' '}
+                    <button className="btn-link" onClick={() => { onClose(); navigate('/register'); }}>
+                      Register
+                    </button>{' '}
+                    to participate
+                  </p>
+                )}
+              </div>
             </div>
+          )}
+
+          {saleStatus && !product && (
+            <div className="fs-loading">No product configured for this sale.</div>
           )}
         </div>
       </div>

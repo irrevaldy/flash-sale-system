@@ -12,15 +12,16 @@ import productController from './controllers/productController';
 import cartController from './controllers/cartController';
 import orderController from './controllers/orderController';
 import userController from './controllers/userController';
-import { apiLimiter, purchaseLimiter, statusLimiter } from './middleware/rateLimiter';
+import { apiLimiter } from './middleware/rateLimiter';
 import paymentRoutes from './routes/paymentRoutes';
+import flashSaleRoutes from './routes/flashSaleRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use('/api/payments', paymentRoutes);
+app.use('/api/payments', paymentRoutes);   // ⚠️ must be before express.json() for webhook raw body
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -48,14 +49,17 @@ app.get('/health', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== FLASH SALE ROUTES ====================
+app.use('/api/flash-sale', flashSaleRoutes);
+
 // ==================== PRODUCT ROUTES ====================
 app.get('/api/products', productController.getProducts.bind(productController));
 app.get('/api/products/categories', productController.getCategories.bind(productController));
 app.get('/api/products/slug/:slug', productController.getProductBySlug.bind(productController));
 app.get('/api/products/:id', productController.getProduct.bind(productController));
-app.post('/api/products', productController.createProduct.bind(productController)); // Admin
-app.put('/api/products/:id', productController.updateProduct.bind(productController)); // Admin
-app.delete('/api/products/:id', productController.deleteProduct.bind(productController)); // Admin
+app.post('/api/products', productController.createProduct.bind(productController));
+app.put('/api/products/:id', productController.updateProduct.bind(productController));
+app.delete('/api/products/:id', productController.deleteProduct.bind(productController));
 
 // ==================== CART ROUTES ====================
 app.get('/api/cart/:userId', cartController.getCart.bind(cartController));
@@ -70,7 +74,7 @@ app.post('/api/orders/checkout', orderController.checkout.bind(orderController))
 app.get('/api/orders/:userId', orderController.getUserOrders.bind(orderController));
 app.get('/api/orders/detail/:orderNumber', orderController.getOrder.bind(orderController));
 app.get('/api/orders/stats/:userId', orderController.getUserStats.bind(orderController));
-app.put('/api/orders/:orderNumber/status', orderController.updateOrderStatus.bind(orderController)); // Admin
+app.put('/api/orders/:orderNumber/status', orderController.updateOrderStatus.bind(orderController));
 app.post('/api/orders/:orderNumber/cancel', orderController.cancelOrder.bind(orderController));
 
 // ==================== USER ROUTES ====================
@@ -107,10 +111,8 @@ async function startServer() {
     console.log('='.repeat(60));
     console.log('');
 
-    // Connect to MongoDB
     await connectDatabase();
 
-    // Start listening
     app.listen(PORT, () => {
       console.log('');
       console.log('='.repeat(60));
@@ -121,41 +123,26 @@ async function startServer() {
       console.log('='.repeat(60));
       console.log('');
       console.log('✅ Available Endpoints:');
-      console.log('  Products:  GET    /api/products');
-      console.log('  Product:   GET    /api/products/:id');
-      console.log('  Cart:      GET    /api/cart/:userId');
-      console.log('  Add Item:  POST   /api/cart/:userId/items');
-      console.log('  Checkout:  POST   /api/orders/checkout');
-      console.log('  Orders:    GET    /api/orders/:userId');
-      console.log('  Register:  POST   /api/users/register');
-      console.log('  Login:     POST   /api/users/login');
-      console.log('  Profile:   GET    /api/users/:email');
-      console.log('');
-      console.log('📖 Test Commands:');
-      console.log(`  curl http://localhost:${PORT}/api/products`);
-      console.log(`  curl http://localhost:${PORT}/api/cart/user@test.com`);
+      console.log('  Products:       GET    /api/products');
+      console.log('  Cart:           GET    /api/cart/:userId');
+      console.log('  Checkout:       POST   /api/orders/checkout');
+      console.log('  Orders:         GET    /api/orders/:userId');
+      console.log('  Register:       POST   /api/users/register');
+      console.log('  Login:          POST   /api/users/login');
+      console.log('  Flash Sale:     GET    /api/flash-sale/status');
+      console.log('  Flash Purchase: POST   /api/flash-sale/purchase');
+      console.log('  Flash Check:    GET    /api/flash-sale/check/:userId');
       console.log('');
     });
   } catch (error) {
-    console.error('');
     console.error('❌ Failed to start server:', error);
-    console.error('');
     process.exit(1);
   }
 }
 
-// Handle shutdown gracefully
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully...');
-  process.exit(0);
-});
+process.on('SIGTERM', async () => { process.exit(0); });
+process.on('SIGINT',  async () => { process.exit(0); });
 
-process.on('SIGINT', async () => {
-  console.log('\nSIGINT received, shutting down gracefully...');
-  process.exit(0);
-});
-
-// Start the server
 startServer();
 
 export default app;

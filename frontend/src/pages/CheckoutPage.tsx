@@ -1,5 +1,5 @@
 // src/pages/CheckoutPage.tsx
-// v3.1 - Stripe payment integration (FIXED: uses real PaymentIntent id + no client-side "paid")
+// v3.0 - Stripe payment integration
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +12,7 @@ import {
 } from '@stripe/react-stripe-js';
 import { userApi, orderApi } from '../services/api';
 import api from '../services/api';
+import { flashSaleApi } from '../services/api';
 import './CheckoutPage.css';
 
 // ── Stripe instance (created once outside component) ──
@@ -48,6 +49,7 @@ interface CheckoutPageProps {
   cartItems: CartItem[];
   cartTotal: number;
   onOrderComplete?: () => void;
+  isFlashSaleCheckout?: boolean; // ← flag to trigger confirm after payment
 }
 
 // ─────────────────────────────────────────────
@@ -56,8 +58,7 @@ interface CheckoutPageProps {
 
 interface StripeFormProps {
   total: number;
-  clientSecret: string;
-  onSuccess: (piId: string) => void;
+  onSuccess: () => void;
   onBack: () => void;
   loading: boolean;
   setLoading: (v: boolean) => void;
@@ -66,7 +67,6 @@ interface StripeFormProps {
 
 const StripePaymentForm: React.FC<StripeFormProps> = ({
   total,
-  clientSecret,
   onSuccess,
   onBack,
   loading,
@@ -75,6 +75,7 @@ const StripePaymentForm: React.FC<StripeFormProps> = ({
 }) => {
   const stripe = useStripe();
   const elements = useElements();
+  const [stripeError, setStripeError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,42 +83,45 @@ const StripePaymentForm: React.FC<StripeFormProps> = ({
 
     setLoading(true);
     setError('');
+    setStripeError('');
 
-    // ✅ REQUIRED for PaymentElement (deferred / async flows)
-    const { error: submitError } = await elements.submit();
-    if (submitError) {
-      setError(submitError.message || 'Invalid payment details.');
-      setLoading(false);
-      return;
-    }
-
-    const { error, paymentIntent } = await stripe.confirmPayment({
+    const { error } = await stripe.confirmPayment({
       elements,
-      clientSecret,
       redirect: 'if_required',
     });
 
     if (error) {
-      setError(error.message || 'Payment failed. Please try again.');
+      // Reset loading so user can fix card details and retry
       setLoading(false);
-      return;
+      const msg = error.message || 'Payment failed. Please try again.';
+      setStripeError(msg);
+      setError(msg);
+    } else {
+      onSuccess();
     }
-
-    if (!paymentIntent?.id) {
-      setError('Payment did not complete properly.');
-      setLoading(false);
-      return;
-    }
-
-    onSuccess(paymentIntent.id);
   };
-
 
   return (
     <form onSubmit={handleSubmit}>
       <div className="stripe-element-wrapper">
-        <PaymentElement options={{ layout: 'tabs' }} />
+        <PaymentElement
+          options={{ layout: 'tabs' }}
+          onChange={() => {
+            // Clear error when user changes payment details
+            if (stripeError) {
+              setStripeError('');
+              setError('');
+            }
+          }}
+        />
       </div>
+
+      {stripeError && (
+        <div className="stripe-error-box">
+          ❌ {stripeError}
+          <span className="stripe-error-hint">Please check your card details or try a different payment method.</span>
+        </div>
+      )}
 
       <div className="stripe-secure-note">
         🔒 Secured by Stripe. Your card details are never stored on our servers.
@@ -148,6 +152,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   cartItems,
   cartTotal,
   onOrderComplete,
+  isFlashSaleCheckout = false,
 }) => {
   const navigate = useNavigate();
   const [step, setStep] = useState<'shipping' | 'payment'>('shipping');
@@ -157,6 +162,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  const [paymentIntentId, setPaymentIntentId] = useState('');
 
   const [newAddress, setNewAddress] = useState<Address>({
     type: 'shipping',
@@ -177,12 +183,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   const total = subtotal + tax + shipping;
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
+    if (!user) { navigate('/login'); return; }
     loadAddresses();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const loadAddresses = async () => {
@@ -198,17 +200,14 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
 
   // Step 1: validate address → create PaymentIntent → go to payment
   const handleShippingSubmit = async () => {
-    if (!useNewAddress && !selectedAddressId) {
+    // When user has no saved addresses, the new address form is always shown
+    const usingNewAddress = useNewAddress || addresses.length === 0;
+
+    if (!usingNewAddress && !selectedAddressId) {
       setError('Please select a shipping address');
       return;
     }
-    if (
-      useNewAddress &&
-      (!newAddress.street ||
-        !newAddress.city ||
-        !newAddress.state ||
-        !newAddress.zipCode)
-    ) {
+    if (usingNewAddress && (!newAddress.street || !newAddress.city || !newAddress.state || !newAddress.zipCode)) {
       setError('Please fill in all required address fields');
       return;
     }
@@ -217,66 +216,73 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     setLoading(true);
 
     try {
-      // NOTE:
-      // If your axios baseURL already includes "/api", then use:
-      //   api.post('/payments/create-payment-intent', ...)
-      // If baseURL does NOT include "/api", keep "/api/payments/..."
       const res = await api.post('/api/payments/create-payment-intent', {
         amount: total,
         currency: 'usd',
       });
-
       setClientSecret(res.data.clientSecret);
+      setPaymentIntentId(res.data.paymentIntentId || '');
       setStep('payment');
     } catch (err: any) {
-      console.log('init payment error:', err);
-      console.log('status:', err?.response?.status);
-      console.log('data:', err?.response?.data);
-      setError(err?.response?.data?.error || err?.message || 'Failed to initialize payment.');
+      setError('Failed to initialize payment. Please try again.');
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Step 2: payment confirmed → create order (backend verifies PI is succeeded)
-  const handlePaymentSuccess = async (piId: string) => {
+  // Step 2: payment confirmed → confirm flash sale reservation → create order
+  const handlePaymentSuccess = async () => {
     setLoading(true);
     setError('');
 
     try {
-      const addr = useNewAddress
-        ? newAddress
-        : addresses.find((a) => a._id === selectedAddressId);
-
+      const usingNewAddress = useNewAddress || addresses.length === 0;
+      const addr = usingNewAddress ? newAddress : addresses.find(a => a._id === selectedAddressId);
       if (!addr) throw new Error('No shipping address');
+
+      // ── Confirm flash sale reservation if this is a flash sale checkout ──
+      if (isFlashSaleCheckout && paymentIntentId) {
+        try {
+          await flashSaleApi.confirm(user.email, paymentIntentId);
+        } catch (err) {
+          console.warn('Flash sale confirm failed — order will still be created', err);
+        }
+      }
 
       const response = await orderApi.checkout({
         userId: user.email,
+        items: cartItems.map(item => ({
+          productId: item.id,
+          name:      item.name,
+          quantity:  item.quantity,
+          price:     item.price,
+          image:     item.image,
+        })),
         shipping: {
           firstName: addr.firstName,
-          lastName: addr.lastName,
-          email: user.email,
-          phone: addr.phone,
-          address: addr.street,
-          city: addr.city,
-          state: addr.state,
-          zipCode: addr.zipCode,
-          country: addr.country,
+          lastName:  addr.lastName,
+          email:     user.email,
+          phone:     addr.phone,
+          address:   addr.street,
+          city:      addr.city,
+          state:     addr.state,
+          zipCode:   addr.zipCode,
+          country:   addr.country,
         },
         payment: {
           method: 'credit_card',
-          stripePaymentIntentId: piId, // ✅ confirmed PI id
+          status: 'paid',
+          stripePaymentIntentId: paymentIntentId,
         },
       });
 
       if (response.success) {
         onOrderComplete?.();
         navigate(`/orders/${response.order.orderNumber}`);
-      } else {
-        setError('Order creation failed. Please contact support.');
       }
     } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Order creation failed. Please contact support.');
+      setError(err.response?.data?.error || 'Order creation failed. Please contact support.');
     } finally {
       setLoading(false);
     }
@@ -291,9 +297,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
           <h1>Checkout</h1>
           <div className="empty-state">
             <p>Your cart is empty.</p>
-            <button className="btn-primary" onClick={() => navigate('/catalog')}>
-              Shop Now
-            </button>
+            <button className="btn-primary" onClick={() => navigate('/catalog')}>Shop Now</button>
           </div>
         </div>
       </div>
@@ -323,6 +327,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         <div className="checkout-content">
           {/* ── Left: Forms ── */}
           <div className="checkout-main">
+
             {/* STEP 1: Shipping */}
             {step === 'shipping' && (
               <div className="checkout-section">
@@ -330,7 +335,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
 
                 {addresses.length > 0 && !useNewAddress && (
                   <div className="address-list">
-                    {addresses.map((address) => (
+                    {addresses.map(address => (
                       <label key={address._id} className="address-option">
                         <input
                           type="radio"
@@ -340,13 +345,8 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                           onChange={() => setSelectedAddressId(address._id!)}
                         />
                         <div className="address-content">
-                          <strong>
-                            {address.firstName} {address.lastName}
-                          </strong>
-                          <span>
-                            {address.street}, {address.city}, {address.state}{' '}
-                            {address.zipCode}
-                          </span>
+                          <strong>{address.firstName} {address.lastName}</strong>
+                          <span>{address.street}, {address.city}, {address.state} {address.zipCode}</span>
                           <span>{address.phone}</span>
                         </div>
                       </label>
@@ -367,88 +367,54 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                     <div className="form-row">
                       <div className="form-group">
                         <label>First Name *</label>
-                        <input
-                          type="text"
-                          value={newAddress.firstName}
-                          onChange={(e) =>
-                            setNewAddress({ ...newAddress, firstName: e.target.value })
-                          }
-                        />
+                        <input type="text" value={newAddress.firstName}
+                          onChange={(e) => setNewAddress({ ...newAddress, firstName: e.target.value })} />
                       </div>
                       <div className="form-group">
                         <label>Last Name *</label>
-                        <input
-                          type="text"
-                          value={newAddress.lastName}
-                          onChange={(e) =>
-                            setNewAddress({ ...newAddress, lastName: e.target.value })
-                          }
-                        />
+                        <input type="text" value={newAddress.lastName}
+                          onChange={(e) => setNewAddress({ ...newAddress, lastName: e.target.value })} />
                       </div>
                     </div>
-
                     <div className="form-group">
                       <label>Street Address *</label>
-                      <input
-                        type="text"
-                        value={newAddress.street}
-                        onChange={(e) =>
-                          setNewAddress({ ...newAddress, street: e.target.value })
-                        }
-                        placeholder="123 Main St"
-                      />
+                      <input type="text" value={newAddress.street}
+                        onChange={(e) => setNewAddress({ ...newAddress, street: e.target.value })}
+                        placeholder="123 Main St" />
                     </div>
-
                     <div className="form-row">
                       <div className="form-group">
                         <label>City *</label>
-                        <input
-                          type="text"
-                          value={newAddress.city}
-                          onChange={(e) =>
-                            setNewAddress({ ...newAddress, city: e.target.value })
-                          }
-                        />
+                        <input type="text" value={newAddress.city}
+                          onChange={(e) => setNewAddress({ ...newAddress, city: e.target.value })} />
                       </div>
                       <div className="form-group">
                         <label>State *</label>
-                        <input
-                          type="text"
-                          value={newAddress.state}
-                          onChange={(e) =>
-                            setNewAddress({ ...newAddress, state: e.target.value })
-                          }
-                          placeholder="CA"
-                        />
+                        <input type="text" value={newAddress.state}
+                          onChange={(e) => setNewAddress({ ...newAddress, state: e.target.value })}
+                          placeholder="CA" />
                       </div>
                       <div className="form-group">
                         <label>ZIP *</label>
-                        <input
-                          type="text"
-                          value={newAddress.zipCode}
-                          onChange={(e) =>
-                            setNewAddress({ ...newAddress, zipCode: e.target.value })
-                          }
-                          placeholder="90210"
-                        />
+                        <input type="text" value={newAddress.zipCode}
+                          onChange={(e) => setNewAddress({ ...newAddress, zipCode: e.target.value })}
+                          placeholder="90210" />
                       </div>
                     </div>
-
                     <div className="form-group">
                       <label>Phone *</label>
-                      <input
-                        type="tel"
-                        value={newAddress.phone}
-                        onChange={(e) =>
-                          setNewAddress({ ...newAddress, phone: e.target.value })
-                        }
-                        placeholder="+1 (555) 123-4567"
-                      />
+                      <input type="tel" value={newAddress.phone}
+                        onChange={(e) => setNewAddress({ ...newAddress, phone: e.target.value })}
+                        placeholder="+1 (555) 123-4567" />
                     </div>
                   </div>
                 )}
 
-                <button className="btn-primary btn-full" onClick={handleShippingSubmit} disabled={loading}>
+                <button
+                  className="btn-primary btn-full"
+                  onClick={handleShippingSubmit}
+                  disabled={loading}
+                >
                   {loading ? 'Preparing payment...' : 'Continue to Payment →'}
                 </button>
               </div>
@@ -474,7 +440,6 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                 >
                   <StripePaymentForm
                     total={total}
-                    clientSecret={clientSecret}
                     onSuccess={handlePaymentSuccess}
                     onBack={() => setStep('shipping')}
                     loading={loading}
@@ -491,7 +456,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
             <div className="order-summary-card">
               <h3>Order Summary</h3>
               <div className="summary-items">
-                {cartItems.map((item) => (
+                {cartItems.map(item => (
                   <div key={item.id} className="summary-item">
                     <img src={item.image || 'https://via.placeholder.com/60'} alt={item.name} />
                     <div className="summary-item-details">
@@ -504,21 +469,12 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                   </div>
                 ))}
               </div>
-
               <div className="summary-divider" />
-              <div className="summary-row">
-                <span>Subtotal</span>
-                <span>${subtotal.toFixed(2)}</span>
-              </div>
-              <div className="summary-row">
-                <span>Tax (10%)</span>
-                <span>${tax.toFixed(2)}</span>
-              </div>
+              <div className="summary-row"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
+              <div className="summary-row"><span>Tax (10%)</span><span>${tax.toFixed(2)}</span></div>
               <div className="summary-row">
                 <span>Shipping</span>
-                <span>
-                  {shipping === 0 ? <span className="free">FREE</span> : `$${shipping.toFixed(2)}`}
-                </span>
+                <span>{shipping === 0 ? <span className="free">FREE</span> : `$${shipping.toFixed(2)}`}</span>
               </div>
               <div className="summary-divider" />
               <div className="summary-row summary-total">

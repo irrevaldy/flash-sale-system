@@ -45,6 +45,50 @@ type HomeProduct = {
 const FLASHSALE_COOLDOWN_MS = 5 * 60 * 1000;
 const FLASHSALE_LAST_SHOWN_KEY = 'flashsale_last_shown_ts';
 
+// ─────────────────────────────────────────────
+// CheckoutWrapper — injects flash sale item from navigation state into cartItems
+// ─────────────────────────────────────────────
+function CheckoutWrapper({
+  user,
+  cartItems,
+  onOrderComplete,
+}: {
+  user: any;
+  cartItems: CartItem[];
+  cartTotal: number;
+  onOrderComplete: () => void;
+}) {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const isFlashSale = searchParams.get('flashSale') === 'true';
+  const flashSaleItem = (location.state as any)?.flashSaleItem;
+
+  // If flash sale checkout, use ONLY the flash sale item (not the whole cart)
+  const effectiveItems: CartItem[] = isFlashSale && flashSaleItem
+    ? [{
+        id:       flashSaleItem._id,
+        name:     flashSaleItem.name,
+        price:    flashSaleItem.price,
+        image:    flashSaleItem.images?.[0],
+        quantity: 1,
+      }]
+    : cartItems;
+
+  const effectiveTotal = effectiveItems.reduce(
+    (sum, item) => sum + item.price * item.quantity, 0
+  );
+
+  return (
+    <CheckoutPage
+      user={user}
+      cartItems={effectiveItems}
+      cartTotal={effectiveTotal}
+      isFlashSaleCheckout={isFlashSale}
+      onOrderComplete={onOrderComplete}
+    />
+  );
+}
+
 function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -196,7 +240,7 @@ function AppContent() {
       <FlashSale
         isOpen={isFlashSaleOpen}
         onClose={closeFlashSale}
-        onAddToCart={(p) => handleAddToCart(p)}
+        user={user}
       />
 
       <header className="app-header">
@@ -276,7 +320,10 @@ function AppContent() {
                   </div>
                 ) : (
                   <>
-                    <FlashSaleCarousel onAddToCart={(p) => handleAddToCart(p)} />
+                    <FlashSaleCarousel
+                      onAddToCart={(p) => handleAddToCart(p)}
+                      user={user}
+                    />
                     <HomeCarousel
                       products={homeProducts}
                       onView={(id) => navigate(`/products/${id}`)}
@@ -356,7 +403,7 @@ function AppContent() {
             path="/checkout"
             element={
               user ? (
-                <CheckoutPage
+                <CheckoutWrapper
                   user={user}
                   cartItems={cartItems}
                   cartTotal={cartTotal}

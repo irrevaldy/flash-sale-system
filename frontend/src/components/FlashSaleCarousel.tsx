@@ -1,227 +1,233 @@
 // src/components/FlashSaleCarousel.tsx
-// Horizontal carousel on home page using same flash sale products + per-card countdown
+// v2.0 - Single product, real sale end time, matches FlashSale popup
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { productApi } from '../services/api';
+import { flashSaleApi } from '../services/api';
 import './FlashSaleCarousel.css';
 
-interface Product {
-  _id: string;
-  name: string;
-  price: number;
-  compareAtPrice?: number;
-  images: string[];
-  category?: string;
-  inventory: {
-    availableStock: number;
+interface SaleStatus {
+  status: 'upcoming' | 'active' | 'ended';
+  startTime: string;
+  endTime: string;
+  totalStock: number;
+  remaining: number;
+  soldOut: boolean;
+  flashPrice: number;
+  product: {
+    _id: string;
+    name: string;
+    images: string[];
+    category?: string;
+    originalPrice: number;
+    flashPrice: number;
+  } | null;
+}
+
+function useCountdown(targetTime: string | null) {
+  const [timeLeft, setTimeLeft] = useState(0);
+
+  useEffect(() => {
+    if (!targetTime) return;
+    const update = () => setTimeLeft(Math.max(0, new Date(targetTime).getTime() - Date.now()));
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, [targetTime]);
+
+  const h = Math.floor(timeLeft / 3_600_000);
+  const m = Math.floor((timeLeft % 3_600_000) / 60_000);
+  const s = Math.floor((timeLeft % 60_000) / 1000);
+
+  return {
+    timeLeft,
+    isUrgent: timeLeft > 0 && timeLeft <= 60_000,
+    formatted: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
   };
-}
-
-type DealMap = Record<string, number>;
-
-const MIN_MINUTES = 3;
-const MAX_MINUTES = 15;
-
-const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
-  electronics: { bg: '#dbeafe', text: '#1d4ed8' },
-  fashion:     { bg: '#fce7f3', text: '#be185d' },
-  home:        { bg: '#d1fae5', text: '#065f46' },
-  sports:      { bg: '#ffedd5', text: '#c2410c' },
-  beauty:      { bg: '#ede9fe', text: '#6d28d9' },
-  books:       { bg: '#fef9c3', text: '#92400e' },
-  toys:        { bg: '#fee2e2', text: '#b91c1c' },
-  food:        { bg: '#dcfce7', text: '#15803d' },
-};
-
-function getCategoryStyle(category?: string) {
-  const key = category?.toLowerCase() || '';
-  return CATEGORY_COLORS[key] || { bg: '#f3f4f6', text: '#374151' };
-}
-
-function pseudoRandomFromId(id: string) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return (h % 10000) / 10000;
-}
-
-function generateExpiry(productId: string) {
-  const r = pseudoRandomFromId(productId + String(Date.now()));
-  const minutes = MIN_MINUTES + Math.round(r * (MAX_MINUTES - MIN_MINUTES));
-  const secondsJitter = Math.floor(r * 59);
-  return Date.now() + minutes * 60_000 + secondsJitter * 1000;
-}
-
-function formatMMSS(ms: number) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 export default function FlashSaleCarousel({
-  onAddToCart,
+  user,
 }: {
   onAddToCart: (product: any) => void;
+  user: any;
 }) {
   const navigate = useNavigate();
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [now, setNow] = useState(Date.now());
-  const [dealMap, setDealMap] = useState<DealMap>({});
+  const [saleStatus, setSaleStatus] = useState<SaleStatus | null>(null);
+  const [purchasing, setPurchasing] = useState(false);
+  const [hasPurchased, setHasPurchased] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Load products
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await productApi.getAll({ limit: 10 });
-        const list: Product[] = data.products || [];
-        setProducts(list);
-        const fresh: DealMap = {};
-        list.forEach((p) => { fresh[p._id] = generateExpiry(p._id); });
-        setDealMap(fresh);
-      } catch (e) {
-        console.error('Failed to load flash sale carousel', e);
-      } finally {
-        setLoading(false);
+  const endCountdown   = useCountdown(saleStatus?.status === 'active'   ? saleStatus.endTime   : null);
+  const startCountdown = useCountdown(saleStatus?.status === 'upcoming' ? saleStatus.startTime : null);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const data = await flashSaleApi.getStatus();
+      setSaleStatus(data);
+      if (user?.email) {
+        const check = await flashSaleApi.checkPurchase(user.email);
+        setHasPurchased(check.hasPurchased);
       }
-    };
-    load();
-  }, []);
+    } catch (e) {
+      console.error('Failed to load flash sale status', e);
+    }
+  }, [user?.email]);
 
-  // Tick clock
   useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(t);
-  }, []);
+    loadStatus();
+    const t = setInterval(loadStatus, 10_000);
+    return () => clearInterval(t);
+  }, [loadStatus]);
 
-  // Auto-reset expired timers
-  useEffect(() => {
-    const t = window.setInterval(() => {
-      setDealMap((prev) => {
-        const next = { ...prev };
-        let changed = false;
-        for (const id of Object.keys(next)) {
-          if (Date.now() >= next[id]) {
-            next[id] = generateExpiry(id);
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      });
-    }, 1000);
-    return () => window.clearInterval(t);
-  }, []);
+  const handleBuy = async () => {
+    if (!user?.email) { navigate('/login'); return; }
 
-  // Compute timer labels
-  const dealInfoById = useMemo(() => {
-    const map: Record<string, { label: string; isUrgent: boolean }> = {};
-    products.forEach((p) => {
-      const remaining = Math.max(0, (dealMap[p._id] || 0) - now);
-      map[p._id] = {
-        label: formatMMSS(remaining),
-        isUrgent: remaining > 0 && remaining <= 60_000,
-      };
-    });
-    return map;
-  }, [products, dealMap, now]);
+    setPurchasing(true);
+    setFeedback(null);
 
-  const scroll = (dir: 'left' | 'right') => {
-    const el = trackRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir === 'left' ? -el.offsetWidth : el.offsetWidth, behavior: 'smooth' });
+    try {
+      const result = await flashSaleApi.reserve(user.email);
+
+      if (result.success) {
+        const product = saleStatus!.product!;
+        // Pass the flash sale item via navigation state so App.tsx can inject it into cart
+        navigate('/checkout?flashSale=true', {
+          state: {
+            flashSaleItem: {
+              _id:         product._id,
+              name:        product.name,
+              price:       saleStatus!.flashPrice,
+              images:      product.images,
+              quantity:    1,
+              isFlashSale: true,
+            },
+          },
+        });
+      }
+    } catch (err: any) {
+      const data = err?.response?.data;
+      if (data?.alreadyPurchased) {
+        setHasPurchased(true);
+        setFeedback({ type: 'error', message: 'You have already purchased this item.' });
+      } else if (data?.soldOut) {
+        setFeedback({ type: 'error', message: 'Sold out! All items have been claimed.' });
+        loadStatus();
+      } else {
+        setFeedback({ type: 'error', message: data?.error || 'Could not reserve item. Try again.' });
+      }
+    } finally {
+      setPurchasing(false);
+    }
   };
 
-  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    const el = trackRef.current;
-    if (!el) return;
-    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    if (delta === 0) return;
-    e.preventDefault();
-    el.scrollLeft += delta;
-  };
+  if (!saleStatus || !saleStatus.product) return null;
+  if (saleStatus.status === 'ended') return null;
 
-  if (loading || !products.length) return null;
+  const product  = saleStatus.product;
+  const discount = product.originalPrice > product.flashPrice
+    ? Math.round(((product.originalPrice - product.flashPrice) / product.originalPrice) * 100)
+    : 0;
+  const stockPct = Math.round((saleStatus.remaining / saleStatus.totalStock) * 100);
+  const img      = product.images?.[0] || 'https://via.placeholder.com/400x300';
 
   return (
     <section className="fsc-section">
+      {/* Header */}
       <div className="fsc-header">
         <div className="fsc-title-row">
           <span className="fsc-lightning">⚡</span>
           <h2 className="fsc-title">Flash Sale</h2>
-          <span className="fsc-live-badge">LIVE</span>
+          {saleStatus.status === 'active'   && <span className="fsc-live-badge">LIVE</span>}
+          {saleStatus.status === 'upcoming' && <span className="fsc-upcoming-badge">UPCOMING</span>}
         </div>
-        <div className="fsc-scroll-btns">
-          <button className="fsc-scroll-btn" onClick={() => scroll('left')}>‹</button>
-          <button className="fsc-scroll-btn" onClick={() => scroll('right')}>›</button>
-        </div>
+
+        {saleStatus.status === 'active' && (
+          <div className={`fsc-countdown ${endCountdown.isUrgent ? 'urgent' : ''}`}>
+            ⏱ Ends in <strong>{endCountdown.formatted}</strong>
+          </div>
+        )}
+        {saleStatus.status === 'upcoming' && (
+          <div className="fsc-countdown upcoming">
+            🕐 Starts in <strong>{startCountdown.formatted}</strong>
+          </div>
+        )}
       </div>
 
-      <div ref={trackRef} className="fsc-track" onWheel={onWheel}>
-        {products.map((product) => {
-          const discount = product.compareAtPrice
-            ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
-            : 0;
-          const outOfStock = product.inventory.availableStock === 0;
-          const catStyle = getCategoryStyle(product.category);
-          const img = product.images?.[0] || 'https://via.placeholder.com/300x200';
-          const deal = dealInfoById[product._id];
+      {/* Feedback */}
+      {feedback && (
+        <div className={`fsc-feedback fsc-feedback-${feedback.type}`}>
+          {feedback.message}
+        </div>
+      )}
 
-          return (
-            <div
-              key={product._id}
-              className="fsc-card"
-              onClick={() => navigate(`/products/${product._id}`)}
-            >
-              {/* Discount badge */}
-              {discount > 0 && (
-                <div className="fsc-discount-badge">{discount}% OFF</div>
-              )}
+      {/* Single product card */}
+      <div className="fsc-single-card">
+        {/* Image */}
+        <div className="fsc-single-image-wrap" onClick={() => navigate(`/products/${product._id}`)}>
+          {discount > 0 && <div className="fsc-discount-badge">{discount}% OFF</div>}
+          <img src={img} alt={product.name} className="fsc-single-image" />
+        </div>
 
-              {/* Countdown timer */}
-              {deal && (
-                <div className={`fsc-timer ${deal.isUrgent ? 'urgent' : ''}`}>
-                  ⏱ {deal.label}
-                </div>
-              )}
+        {/* Info */}
+        <div className="fsc-single-info">
+          {product.category && (
+            <span className="fsc-category-badge">
+              {product.category.charAt(0).toUpperCase() + product.category.slice(1)}
+            </span>
+          )}
 
-              {/* Image */}
-              <div className="fsc-image-wrap">
-                <img src={img} alt={product.name} className="fsc-image" />
-              </div>
+          <div className="fsc-single-name" onClick={() => navigate(`/products/${product._id}`)}>
+            {product.name}
+          </div>
 
-              {/* Body */}
-              <div className="fsc-card-body">
-                {product.category && (
-                  <span
-                    className="fsc-category-badge"
-                    style={{ backgroundColor: catStyle.bg, color: catStyle.text }}
-                  >
-                    {product.category.charAt(0).toUpperCase() + product.category.slice(1)}
-                  </span>
-                )}
+          <div className="fsc-single-pricing">
+            <span className="fsc-flash-price">${saleStatus.flashPrice.toFixed(2)}</span>
+            {product.originalPrice > saleStatus.flashPrice && (
+              <span className="fsc-compare">${product.originalPrice.toFixed(2)}</span>
+            )}
+          </div>
 
-                <div className="fsc-name" title={product.name}>{product.name}</div>
-
-                <div className="fsc-price-row">
-                  <span className="fsc-price">${product.price.toFixed(2)}</span>
-                  {product.compareAtPrice && product.compareAtPrice > product.price && (
-                    <span className="fsc-compare">${product.compareAtPrice.toFixed(2)}</span>
-                  )}
-                </div>
-
-                <button
-                  className="fsc-btn-add"
-                  disabled={outOfStock}
-                  onClick={(e) => { e.stopPropagation(); onAddToCart(product); }}
-                >
-                  {outOfStock ? 'Out of Stock' : '🛒 Add to Cart'}
-                </button>
-              </div>
+          {/* Stock bar */}
+          <div className="fsc-stock-section">
+            <div className="fsc-stock-label">
+              <span>
+                {saleStatus.soldOut
+                  ? '😔 Sold out'
+                  : `${saleStatus.remaining} of ${saleStatus.totalStock} remaining`}
+              </span>
+              <span>{stockPct}%</span>
             </div>
-          );
-        })}
+            <div className="fsc-stock-bar">
+              <div
+                className={`fsc-stock-fill ${stockPct <= 20 ? 'critical' : stockPct <= 50 ? 'low' : ''}`}
+                style={{ width: `${stockPct}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="fsc-rules">
+            <span>⚡ One item per user</span>
+            <span>🔒 Verified purchases only</span>
+          </div>
+
+          {hasPurchased ? (
+            <div className="fsc-already-purchased">✅ You secured this item!</div>
+          ) : (
+            <button
+              className="fsc-buy-btn"
+              onClick={handleBuy}
+              disabled={purchasing || saleStatus.status !== 'active' || saleStatus.soldOut}
+            >
+              {purchasing
+                ? 'Processing...'
+                : saleStatus.status === 'upcoming' ? '⏳ Sale Not Started'
+                : saleStatus.soldOut              ? '😔 Sold Out'
+                : !user                           ? '🔑 Login to Buy'
+                : '⚡ Buy Now'}
+            </button>
+          )}
+        </div>
       </div>
     </section>
   );

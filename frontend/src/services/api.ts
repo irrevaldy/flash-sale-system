@@ -161,13 +161,32 @@ export const orderApi = {
 
 // ==================== FLASH SALE API ====================
 export const flashSaleApi = {
-  async getActive() {
-    const response = await api.get('/api/flash-sales/active');
+  async getStatus() {
+    const response = await api.get('/api/flash-sale/status');
     return response.data;
   },
 
-  async getById(id: string) {
-    const response = await api.get(`/api/flash-sales/${id}`);
+  // Reserve item (soft lock) — call on "Buy Now" click
+  async reserve(userId: string) {
+    const response = await api.post('/api/flash-sale/reserve', { userId });
+    return response.data;
+  },
+
+  // Confirm purchase after Stripe payment succeeds
+  async confirm(userId: string, stripePaymentIntentId: string) {
+    const response = await api.post('/api/flash-sale/confirm', { userId, stripePaymentIntentId });
+    return response.data;
+  },
+
+  // Check if user has purchased or has active reservation
+  async checkPurchase(userId: string) {
+    const response = await api.get(`/api/flash-sale/check/${userId}`);
+    return response.data;
+  },
+
+  // Cancel reservation if user exits checkout
+  async cancelReservation(userId: string) {
+    const response = await api.post('/api/flash-sale/cancel-reservation', { userId });
     return response.data;
   },
 };
