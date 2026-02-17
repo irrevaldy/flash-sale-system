@@ -87,8 +87,11 @@ MongoDB ensures durable storage.
 # Authentication
 
 JWT stateless authentication.
+
 Frontend sends:
+
 Authorization: Bearer <accessToken>
+
 Backend validates via middleware.
 
 ---
