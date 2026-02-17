@@ -46,14 +46,14 @@ export const productApi = {
 
 // ==================== USER API ====================
 export const userApi = {
-  async register(email: string, password: string, firstName: string, lastName: string, phone?: string) {
-    const response = await api.post('/api/users/register', {
-      email,
-      password,
-      firstName,
-      lastName,
-      phone,
-    });
+  async register(payload: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+  }) {
+    const response = await api.post('/api/users/register', payload);
     return response.data;
   },
 
