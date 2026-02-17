@@ -135,13 +135,6 @@ const StripePaymentForm: React.FC<StripeFormProps> = ({
           {loading ? 'Processing...' : `Pay $${total.toFixed(2)}`}
         </button>
       </div>
-
-      <div className="test-cards-hint">
-        <strong>🧪 Test cards:</strong>&nbsp;
-        <code>4242 4242 4242 4242</code> Success &nbsp;|&nbsp;
-        <code>4000 0000 0000 0002</code> Decline
-        <br />Any future expiry · Any CVC
-      </div>
     </form>
   );
 };
