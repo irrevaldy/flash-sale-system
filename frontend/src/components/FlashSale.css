@@ -86,6 +86,20 @@
   flex: 1;
 }
 
+/* ================= CATEGORY BADGE ================= */
+
+.fs-category-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 4px;
+  align-self: flex-start;
+}
+
 /* ================= PRODUCT NAME ================= */
 
 .product-name {
@@ -315,14 +329,18 @@
 /* ================= MOBILE ================= */
 
 @media (max-width: 768px) {
- .flashsale-modal-overlay {
-  padding: 24px;               /* same gap all around */
-}
+  .flashsale-modal-overlay {
+    padding: 24px;            /* equal space on all 4 sides */
+    align-items: center;
+    justify-content: center;
+  }
 
-.flashsale-modal {
-  width: calc(100% - 48px);   /* 24px left + 24px right */
-  height: calc(100% - 48px);  /* 24px top + 24px bottom */
-}
+  .flashsale-modal {
+    width: calc(100% - 48px);  /* 24px gap on left + right */
+    height: calc(100% - 48px); /* 24px gap on top + bottom */
+    max-height: calc(100% - 48px);
+    border-radius: 14px;
+  }
 
   .flashsale-modal-body {
     padding: 10px 12px;
