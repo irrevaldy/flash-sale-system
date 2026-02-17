@@ -45,19 +45,16 @@ sequenceDiagram
   participant S as Stripe
 
   U->>FE: Click Buy
-  FE->>BE: POST /flash-sale/reserve
-  BE->>R: Create reservation (TTL lock)
+  FE->>BE: Reserve item
+  BE->>R: Create reservation lock
   R-->>BE: Reserved
 
-  FE->>BE: Request payment intent
-  BE->>S: Create PaymentIntent
-  S-->>FE: clientSecret
   FE->>S: Confirm payment
+  S-->>BE: Webhook payment success
 
-  S-->>BE: Webhook success
   BE->>R: Validate reservation
   BE->>M: Create order + decrement stock
-  BE->>R: Remove reservation
+  BE->>R: Release reservation
   FE-->>U: Show success
 ```
 
@@ -65,209 +62,289 @@ sequenceDiagram
 
 # System Overview
 
-## Frontend (React + Vite)
+Frontend: React + Vite
+Backend: Node.js + Express
+Database: MongoDB
+Concurrency control: Redis
+Payments: Stripe
+Authentication: JWT
 
-Responsibilities:
-
-* Authentication
-* Product browsing
-* Flash sale interaction
-* Checkout flow
-* JWT token storage
-
-Communicates with backend via REST API.
-
----
-
-## Backend (Node.js + Express)
-
-Responsibilities:
-
-* Authentication (JWT)
-* Flash sale orchestration
-* Reservation management
-* Order creation
-* Payment processing
-* Rate limiting
-* Webhook handling
-
-Stateless and horizontally scalable.
-
----
-
-## MongoDB (Persistent Storage)
-
-Stores:
-
-```
-Users
-Products
-Orders
-Cart
-Flash Sale state
-```
-
-Role:
-
-Source of truth for all permanent data.
-
----
-
-## Redis (Concurrency Control Layer)
-
-Stores:
-
-```
-Flash sale reservations
-Stock locks
-Rate limiting counters
-```
-
-Purpose:
-
-Prevents overselling during high concurrency.
-
----
-
-## Stripe (Payment Processor)
-
-Handles:
-
-```
-Payment processing
-Payment validation
-Webhook confirmation
-```
-
-Orders only confirmed after webhook verification.
+MongoDB stores persistent data.
+Redis handles high-speed reservations and locking.
 
 ---
 
 # Flash Sale Design
 
-Uses reservation-based purchase model:
-
-```
+Reservation-based model:
 Reserve → Pay → Confirm → Finalize
-```
 
-Guarantees:
-
-* No overselling
-* Atomic purchase flow
-* Fast reservation
-* Payment-verified order creation
-
-Redis ensures reservation safety before MongoDB update.
+Redis prevents concurrent overselling.
+MongoDB ensures durable storage.
 
 ---
 
-# Authentication Design
+# Authentication
 
-Uses JWT:
-
-```
-Access Token → short-lived
-Refresh Token → long-lived
-```
-
+JWT stateless authentication.
 Frontend sends:
-
-```
-Authorization: Bearer <token>
-```
-
-Backend verifies via middleware.
-
-Enables stateless horizontal scaling.
+Authorization: Bearer <accessToken>
+Backend validates via middleware.
 
 ---
 
-# Key Design Decisions & Tradeoffs
+# Local Setup Instructions
 
-## Redis Reservation Layer
+## Prerequisites
 
-Decision: Redis handles reservation before DB write.
-
-Benefit:
-
-Prevents overselling.
-
-Tradeoff:
-
-Additional infrastructure complexity.
+* Node.js 18+
+* MongoDB running
+* Redis running
+* Stripe account (for payment testing)
 
 ---
 
-## JWT Authentication
+## Backend setup
 
-Decision: Stateless JWT auth.
-
-Benefit:
-
-Scalable, no session storage required.
-
-Tradeoff:
-
-Token revocation requires additional handling.
-
----
-
-## MongoDB as Primary Database
-
-Decision: MongoDB for core data.
-
-Benefit:
-
-Flexible schema, scalable.
-
-Tradeoff:
-
-Less strict relational guarantees vs SQL.
-
----
-
-## Webhook-based Payment Confirmation
-
-Decision: Confirm orders via Stripe webhook only.
-
-Benefit:
-
-Prevents fake or incomplete orders.
-
-Tradeoff:
-
-More complex event handling.
-
----
-
-## Rate Limiting
-
-Decision: API rate limiting enabled.
-
-Benefit:
-
-Protects system during flash sale spikes.
-
-Tradeoff:
-
-May reject excessive client bursts.
-
----
-
-# Scalability Characteristics
-
-Supports:
-
-```
-High concurrency purchase traffic
-Horizontal backend scaling
-Stateless authentication
-Fast reservation handling
-Safe stock management
+```bash
+cd backend
+npm install
 ```
 
-Redis ensures atomic reservation safety.
+Create:
+
+```
+backend/.env
+```
+
+```env
+PORT=3000
+NODE_ENV=development
+
+MONGODB_URI=mongodb://127.0.0.1:27017/flash_sale_db
+
+USE_MOCK_REDIS=true
+
+STRIPE_SECRET_KEY=xxxx
+STRIPE_WEBHOOK_SECRET=xxxxx
+
+JWT_ACCESS_SECRET=<generate>
+JWT_REFRESH_SECRET=<generate>
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=30d
+```
+
+Generate secrets:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
+
+Run backend:
+
+```bash
+npm run dev
+```
+
+---
+
+## Frontend setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Create:
+
+```
+frontend/.env
+```
+
+```env
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_xxxx
+VITE_API_URL=http://localhost:3000
+```
+
+Open:
+
+```
+http://localhost:5173
+```
+
+---
+
+# Stress Test Instructions
+
+Install k6:
+
+```bash
+brew install k6
+```
+
+Example stress test:
+
+```bash
+k6 run stress/k6-reserve.js
+```
+
+Example configuration:
+
+```js
+export const options = {
+  vus: 200,
+  duration: "30s",
+};
+```
+
+This simulates 200 concurrent users.
+
+---
+
+# Expected Stress Test Outcome (IMPORTANT)
+
+When stress testing flash sale reservations, the system MUST demonstrate correctness and stability.
+
+## Correctness expectations
+
+Assume:
+
+```
+Product stock = 100
+Concurrent users = 200
+```
+
+Expected result:
+
+```
+Successful reservations: 100
+Failed reservations: 100
+```
+
+Never:
+
+```
+Successful reservations > stock
+Stock < 0
+Duplicate successful reservations
+```
+
+Redis ensures atomic reservation locking.
+This proves overselling protection works.
+
+---
+
+## Performance expectations
+
+Under load (example: 200 concurrent users):
+
+Typical expected metrics:
+
+```
+Error rate: near 0% (excluding expected reservation failures)
+Latency (p95): < 200ms
+Latency (p99): < 400ms
+Server crashes: none
+Memory leaks: none
+```
+
+Reservation failures are normal and expected once stock is exhausted.
+
+These are NOT system errors.
+
+---
+
+## System stability expectations
+
+System must remain:
+
+* responsive
+* consistent
+* stable
+
+Even when demand exceeds supply.
+
+Backend must not:
+
+* crash
+* oversell
+* corrupt stock data
+
+---
+
+## Database correctness expectations
+After test completes:
+MongoDB must show:
+
+```
+Total orders = initial stock
+Remaining stock = 0
+```
+
+Never negative.
+
+---
+
+## Redis correctness expectations
+Redis must:
+* properly create reservation locks
+* release locks after confirm/cancel
+* never allow duplicate reservation
+
+---
+
+# What This Stress Test Proves
+
+This confirms system guarantees:
+* concurrency safety
+* oversell prevention
+* atomic reservation logic
+* scalability readiness
+
+This validates production-grade flash sale architecture.
+
+---
+
+# Design Tradeoffs (concise)
+
+Redis reservation layer
+
+Benefit:
+Prevents oversell
+
+Tradeoff:
+Additional infrastructure complexity
+
+---
+
+JWT stateless auth
+
+Benefit:
+Horizontally scalable
+
+Tradeoff:
+Token revocation requires extra handling
+
+---
+
+MongoDB flexible schema
+
+Benefit:
+Scalable and fast iteration
+
+Tradeoff:
+Less strict relational guarantees vs SQL
+
+---
+
+Webhook-based order confirmation
+
+Benefit:
+Payment correctness guaranteed
+
+Tradeoff:
+Async handling complexity
 
 ---
 
@@ -275,35 +352,43 @@ Redis ensures atomic reservation safety.
 
 ```
 frontend/
+  src/
+    assets/
+    components/
+    pages/
+    services/
+    App.css
+    App.tsx
+    index.css
+    main.tsx
 backend/
   src/
-    controllers/
-    models/
-    middleware/
-    routes/
     config/
+    controllers/
+    middleware/
+    models/
+    routes/
+    scripts/
+    services/
+    types/
+    utils/
+    server.ts
 ```
-
----
-
-# Security Features
-
-* JWT authentication
-* Password hashing (bcrypt)
-* Stripe webhook verification
-* Rate limiting
-* Secure token handling
 
 ---
 
 # Summary
 
-This architecture ensures:
+This system provides:
 
-* No overselling
-* High concurrency safety
-* Secure payment confirmation
-* Horizontal scalability
-* Reliable flash sale execution
+* concurrency-safe flash sale execution
+* oversell protection
+* high scalability
+* secure payment verification
+* production-grade architecture
 
-Designed specifically for high-traffic flash sale scenarios.
+Redis ensures correctness under extreme load.
+MongoDB ensures durability.
+JWT ensures scalable authentication.
+
+This architecture is suitable for high-traffic flash sale environments.
