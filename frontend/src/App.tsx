@@ -302,14 +302,19 @@ function AppContent() {
           </Link>
 
           <nav className="nav-menu">
-            <Link to="/" className="nav-link">
-              Home
+            <Link to="/" className="nav-link" aria-label="Home" title="Home">
+              <span className="nav-icon" aria-hidden="true">🏠</span>
+              <span className="nav-text">Home</span>
             </Link>
-            <Link to="/catalog" className="nav-link">
-              Shop
+
+            <Link to="/catalog" className="nav-link" aria-label="Shop" title="Shop">
+              <span className="nav-icon" aria-hidden="true">🛍️</span>
+              <span className="nav-text">Shop</span>
             </Link>
-            <Link to="/orders" className="nav-link">
-              Order
+
+            <Link to="/orders" className="nav-link" aria-label="Orders" title="Orders">
+              <span className="nav-icon" aria-hidden="true">📦</span>
+              <span className="nav-text">Order</span>
             </Link>
           </nav>
 

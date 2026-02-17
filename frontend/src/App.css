@@ -83,6 +83,12 @@ body {
   color: #111827;
 }
 
+.nav-icon{
+  display: none;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
 .nav-link:hover {
   color: #2563eb;
 }
@@ -500,6 +506,13 @@ body {
     width: max-content;
   }
 
+  .nav-icon{
+    display: inline-flex;
+  }
+  .nav-text{
+    display: none;
+  }
+
   .logo,
   .header-actions {
     position: relative;
@@ -545,9 +558,13 @@ body {
   }
 
   /* Reduce nav link size */
-  .nav-link {
-    font-size: 0.95rem;
-    padding: 8px 8px;
+  .nav-link{
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  .nav-link:hover{
+    background: #f3f4f6;
   }
 
   /* Hero */
@@ -582,5 +599,17 @@ body {
   .btn-large {
     padding: 0.8rem 2rem;
     font-size: 1rem;
+  }
+
+  .header-container{
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+  }
+
+  .nav-menu{
+    position: static;       /* KEY: no absolute overlay */
+    transform: none;
+    justify-content: center;
   }
 }
