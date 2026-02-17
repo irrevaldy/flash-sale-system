@@ -84,7 +84,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
         password: formData.password,
         firstName: formData.firstName,
         lastName: formData.lastName,
-        phone: formData.phone || undefined,
+        ...(formData.phone && { phone: formData.phone }),
       });
 
       if (response.success) {
