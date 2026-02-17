@@ -1,8 +1,43 @@
-// src/controllers/userController.ts
-
 import { Request, Response } from 'express';
+import jwt, { type Secret, type SignOptions } from 'jsonwebtoken';
 import User from '../models/User';
 import Order from '../models/Order';
+
+function signAccessToken(payload: { userId: string; email: string; tier: string }) {
+  const secret = process.env.JWT_ACCESS_SECRET;
+  if (!secret) throw new Error('JWT_ACCESS_SECRET is not set');
+
+  const expiresIn = (process.env.JWT_ACCESS_EXPIRES_IN || '15m') as SignOptions['expiresIn'];
+
+  const options: SignOptions = {
+    subject: payload.userId,
+    expiresIn,
+  };
+
+  return jwt.sign(
+    { email: payload.email, tier: payload.tier },
+    secret as Secret,
+    options
+  );
+}
+
+function signRefreshToken(payload: { userId: string; email: string }) {
+  const secret = process.env.JWT_REFRESH_SECRET;
+  if (!secret) throw new Error('JWT_REFRESH_SECRET is not set');
+
+  const expiresIn = (process.env.JWT_REFRESH_EXPIRES_IN || '30d') as SignOptions['expiresIn'];
+
+  const options: SignOptions = {
+    subject: payload.userId,
+    expiresIn,
+  };
+
+  return jwt.sign(
+    { email: payload.email },
+    secret as Secret,
+    options
+  );
+}
 
 export class UserController {
   /**
@@ -17,7 +52,7 @@ export class UserController {
         return;
       }
 
-      const emailNormalized = Array.isArray(email) ? email[0].toLowerCase() : email.toLowerCase();
+      const emailNormalized = Array.isArray(email) ? email[0].toLowerCase() : String(email).toLowerCase();
 
       const existingUser = await User.findOne({ email: emailNormalized });
       if (existingUser) {
@@ -27,11 +62,23 @@ export class UserController {
 
       const user = new User({
         email: emailNormalized,
-        passwordHash: password,
+        passwordHash: password, // pre-save hook will hash
         profile: { firstName, lastName, phone },
       });
 
       await user.save();
+
+      // issue tokens right after register (optional but common)
+      const accessToken = signAccessToken({
+        userId: user._id.toString(),
+        email: user.email,
+        tier: user.tier,
+      });
+
+      const refreshToken = signRefreshToken({
+        userId: user._id.toString(),
+        email: user.email,
+      });
 
       const userResponse = user.toObject();
       delete (userResponse as any).passwordHash;
@@ -39,6 +86,8 @@ export class UserController {
       res.status(201).json({
         success: true,
         user: userResponse,
+        token: accessToken,
+        refreshToken,
         message: 'User registered successfully',
       });
     } catch (error) {
@@ -62,8 +111,9 @@ export class UserController {
         return;
       }
 
-      const emailNormalized = Array.isArray(email) ? email[0].toLowerCase() : email.toLowerCase();
+      const emailNormalized = Array.isArray(email) ? email[0].toLowerCase() : String(email).toLowerCase();
 
+      // IMPORTANT: explicitly include passwordHash in case you ever set select:false later
       const user = await User.findOne({ email: emailNormalized });
       if (!user) {
         res.status(401).json({ error: 'Invalid credentials' });
@@ -79,18 +129,78 @@ export class UserController {
       user.lastLoginAt = new Date();
       await user.save();
 
+      const accessToken = signAccessToken({
+        userId: user._id.toString(),
+        email: user.email,
+        tier: user.tier,
+      });
+
+      const refreshToken = signRefreshToken({
+        userId: user._id.toString(),
+        email: user.email,
+      });
+
       const userResponse = user.toObject();
       delete (userResponse as any).passwordHash;
 
       res.json({
         success: true,
         user: userResponse,
+        token: accessToken,
+        refreshToken,
         message: 'Login successful',
       });
     } catch (error) {
       console.error('Error during login:', error);
       res.status(500).json({
         error: 'Login failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  /**
+   * POST /api/users/refresh
+   * Body: { refreshToken: string }
+   */
+  async refresh(req: Request, res: Response): Promise<void> {
+    try {
+      const { refreshToken } = req.body;
+
+      if (!refreshToken) {
+        res.status(400).json({ error: 'refreshToken is required' });
+        return;
+      }
+
+      const secret = process.env.JWT_REFRESH_SECRET;
+      if (!secret) {
+        res.status(500).json({ error: 'JWT_REFRESH_SECRET is not set' });
+        return;
+      }
+
+      const payload = jwt.verify(refreshToken, secret) as any;
+      const userId = payload.sub as string;
+      const email = payload.email as string;
+
+      const user = await User.findById(userId);
+      if (!user || user.email !== email) {
+        res.status(401).json({ error: 'Invalid refresh token' });
+        return;
+      }
+
+      const newAccessToken = signAccessToken({
+        userId: user._id.toString(),
+        email: user.email,
+        tier: user.tier,
+      });
+
+      res.json({
+        success: true,
+        token: newAccessToken,
+      });
+    } catch (error) {
+      res.status(401).json({
+        error: 'Invalid or expired refresh token',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
     }

@@ -1,5 +1,5 @@
 // src/services/api.ts
-// v3.0 - Complete API service with all endpoints
+// v4.0 - API service with JWT auth header + auto refresh on 401
 
 import axios from 'axios';
 
@@ -11,6 +11,88 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// ===== Helpers to read/write tokens from both storages =====
+function getAccessToken() {
+  return localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
+}
+
+function getRefreshToken() {
+  return localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
+}
+
+function setAccessToken(token: string) {
+  // store where refresh token exists (same storage)
+  if (localStorage.getItem('refreshToken')) localStorage.setItem('accessToken', token);
+  else if (sessionStorage.getItem('refreshToken')) sessionStorage.setItem('accessToken', token);
+  else localStorage.setItem('accessToken', token);
+}
+
+// ===== Attach Authorization header automatically =====
+api.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ===== Auto refresh on 401 =====
+let isRefreshing = false;
+let refreshQueue: Array<(newToken: string) => void> = [];
+
+function runQueue(newToken: string) {
+  refreshQueue.forEach((cb) => cb(newToken));
+  refreshQueue = [];
+}
+
+api.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    const originalRequest = error.config;
+
+    // If unauthorized and not retried yet
+    if (error?.response?.status === 401 && !originalRequest?._retry) {
+      originalRequest._retry = true;
+
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) {
+        return Promise.reject(error);
+      }
+
+      // If refresh already in progress, queue the request
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          refreshQueue.push((newToken) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            resolve(api(originalRequest));
+          });
+        });
+      }
+
+      isRefreshing = true;
+      try {
+        const refreshRes = await api.post('/api/users/refresh', { refreshToken });
+        const newToken = refreshRes.data?.token;
+
+        if (!newToken) return Promise.reject(error);
+
+        setAccessToken(newToken);
+        runQueue(newToken);
+
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch (refreshErr) {
+        return Promise.reject(refreshErr);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 // ==================== PRODUCT API ====================
 export const productApi = {
@@ -54,15 +136,17 @@ export const userApi = {
     phone?: string;
   }) {
     const response = await api.post('/api/users/register', payload);
-    return response.data;
+    return response.data; // expects: { success, user, token, refreshToken }
   },
 
   async login(email: string, password: string) {
-    const response = await api.post('/api/users/login', {
-      email,
-      password,
-    });
-    return response.data;
+    const response = await api.post('/api/users/login', { email, password });
+    return response.data; // expects: { success, user, token, refreshToken }
+  },
+
+  async refresh(refreshToken: string) {
+    const response = await api.post('/api/users/refresh', { refreshToken });
+    return response.data; // expects: { success, token }
   },
 
   async getProfile(email: string) {
@@ -166,25 +250,21 @@ export const flashSaleApi = {
     return response.data;
   },
 
-  // Reserve item (soft lock) — call on "Buy Now" click
   async reserve(userId: string) {
     const response = await api.post('/api/flash-sale/reserve', { userId });
     return response.data;
   },
 
-  // Confirm purchase after Stripe payment succeeds
   async confirm(userId: string, stripePaymentIntentId: string) {
     const response = await api.post('/api/flash-sale/confirm', { userId, stripePaymentIntentId });
     return response.data;
   },
 
-  // Check if user has purchased or has active reservation
   async checkPurchase(userId: string) {
     const response = await api.get(`/api/flash-sale/check/${userId}`);
     return response.data;
   },
 
-  // Cancel reservation if user exits checkout
   async cancelReservation(userId: string) {
     const response = await api.post('/api/flash-sale/cancel-reservation', { userId });
     return response.data;

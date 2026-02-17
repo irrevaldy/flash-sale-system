@@ -16,6 +16,8 @@ import { apiLimiter } from './middleware/rateLimiter';
 import paymentRoutes from './routes/paymentRoutes';
 import flashSaleRoutes from './routes/flashSaleRoutes';
 
+import { requireAuth } from './middleware/auth';
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -80,11 +82,12 @@ app.post('/api/orders/:orderNumber/cancel', orderController.cancelOrder.bind(ord
 // ==================== USER ROUTES ====================
 app.post('/api/users/register', userController.register.bind(userController));
 app.post('/api/users/login', userController.login.bind(userController));
-app.get('/api/users/:email', userController.getProfile.bind(userController));
-app.put('/api/users/:email', userController.updateProfile.bind(userController));
-app.get('/api/users/:email/dashboard', userController.getDashboard.bind(userController));
-app.post('/api/users/:email/addresses', userController.addAddress.bind(userController));
-app.delete('/api/users/:email/addresses/:addressId', userController.removeAddress.bind(userController));
+app.post('/api/users/refresh', userController.refresh.bind(userController));
+app.get('/api/users/:email', requireAuth, userController.getProfile.bind(userController));
+app.put('/api/users/:email', requireAuth, userController.updateProfile.bind(userController));
+app.get('/api/users/:email/dashboard', requireAuth, userController.getDashboard.bind(userController));
+app.post('/api/users/:email/addresses', requireAuth, userController.addAddress.bind(userController));
+app.delete('/api/users/:email/addresses/:addressId', requireAuth, userController.removeAddress.bind(userController));
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: any) => {
