@@ -3,7 +3,7 @@
 .flash-sale-container {
   min-height: 100vh;
   padding: 60px 20px;
-  background: #dbeafe; /* slightly darker blue */
+  background: #dbeafe;
   box-sizing: border-box;
 }
 
@@ -54,17 +54,20 @@
 .products-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 24px;            /* space between cards */
+  gap: 24px;
 }
 
 /* ================= PRODUCT CARD ================= */
+
+.product-card {
+  position: relative;
+  overflow: hidden;
+}
 
 .product-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
 }
-
-/* ================= DISCOUNT BADGE ================= */
 
 /* ================= IMAGE ================= */
 
@@ -90,10 +93,8 @@
   font-weight: 600;
   color: #111827;
   margin-bottom: 10px;
-
   line-height: 1.4;
-  height: calc(1rem * 1.4 * 2); /* force 2-line height */
-
+  height: calc(1rem * 1.4 * 2);
   display: -webkit-box;
   line-clamp: 2;
   -webkit-line-clamp: 2;
@@ -110,7 +111,7 @@
 .current-price {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #2563eb; /* soft blue */
+  color: #2563eb;
   margin-right: 8px;
 }
 
@@ -149,7 +150,6 @@
   font-weight: 600;
   cursor: pointer;
   transition: 0.2s ease;
-
   margin-top: auto;
 }
 
@@ -178,110 +178,86 @@
   font-size: 1.1rem;
 }
 
-/* FlashSale Modal Popup */
+/* ================= MODAL OVERLAY ================= */
+
 .flashsale-modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
-
-  /* allow outside click area + scrolling */
-  overflow-y: auto;
-
-  display: block;           /* remove flex centering */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
-
   z-index: 9999;
+  overflow-y: auto;
 }
 
-.flashsale-modal {
-  width: min(900px, 100%);  /* reduced from 1100px */
-  max-height: calc(100vh - 48px);
+/* ================= MODAL ================= */
 
+.flashsale-modal {
+  width: min(860px, 100%);
+  max-height: 80vh;
   background: #ffffff;
   border-radius: 14px;
   overflow: hidden;
-
   box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
-
   display: flex;
   flex-direction: column;
-
-  margin: 0 auto;           /* center horizontally */
 }
 
-/* scroll inside modal */
+/* ================= MODAL BODY ================= */
+
 .flashsale-modal-body {
-  padding: 24px 28px;   /* add space on all sides */
+  padding: 20px 24px;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
-/* MOBILE FIX */
-@media (max-width: 768px) {
-  .flashsale-modal-overlay {
-    padding: 14px;          /* ensures outside click area */
-  }
-
-  .flashsale-modal {
-    width: 100%;
-    max-height: calc(100vh - 28px);
-    border-radius: 12px;
-  }
-
-  .flashsale-modal-body {
-    padding: 18px;
-  }
-
-  .products-grid {
-    gap: 16px;
-  }
-}
+/* ================= MODAL HEADER ================= */
 
 .flashsale-modal-header {
-  position: relative;        /* REQUIRED */
+  position: relative;
   display: flex;
-  justify-content: center;   /* keep title centered */
+  justify-content: center;
   align-items: center;
   text-align: center;
-  padding: 20px 16px;
+  padding: 16px;
   border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
 }
 
 .flashsale-title {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: 1.4rem;
   font-weight: 700;
 }
 
 .flashsale-subtitle {
-  margin-top: 6px;
-  font-size: 0.95rem;
+  margin-top: 4px;
+  font-size: 0.85rem;
   color: #6b7280;
 }
 
-.flashsale-close {
-  position: absolute;        /* move independently */
-  top: 16px;
-  right: 16px;
+/* ================= CLOSE BUTTON ================= */
 
+.flashsale-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
   border: none;
   background: #f3f4f6;
-
-  width: 40px;
-  height: 40px;
-
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
   cursor: pointer;
-
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-
   display: flex;
   align-items: center;
   justify-content: center;
-
   line-height: 1;
   padding: 0;
-
   transition: background 0.2s;
 }
 
@@ -289,42 +265,128 @@
   background: #e5e7eb;
 }
 
+/* ================= MODAL FOOTER ================= */
+
 .flashsale-modal-footer {
-  padding: 12px 18px;
+  padding: 10px 16px;
   border-top: 1px solid #e5e7eb;
   display: flex;
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 
-/* Deal ended state */
+/* ================= DEAL TIMER & BADGES ================= */
+
+.deal-timer {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.82rem;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+}
+
+.deal-timer.urgent {
+  background: rgba(239, 68, 68, 0.95);
+}
+
 .deal-timer.ended {
   background: rgba(107, 114, 128, 0.95);
 }
-
-.product-card { position: relative; overflow: hidden; }
-
-.deal-timer{
-  position:absolute; top:12px; left:12px; z-index:3;
-  padding:6px 10px; border-radius:999px;
-  font-weight:800; font-size:.82rem;
-  background:rgba(17,24,39,.92); color:#fff;
-}
-.deal-timer.urgent{ background:rgba(239,68,68,.95); }
 
 .discount-badge {
   position: absolute;
   top: 12px;
   right: 12px;
   z-index: 4;
-
   background: #ef4444;
   color: white;
-
   padding: 6px 14px;
   border-radius: 999px;
-
   font-weight: 700;
   font-size: 0.85rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
 
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+/* ================= MOBILE ================= */
+
+@media (max-width: 768px) {
+ .flashsale-modal-overlay {
+  padding: 24px;               /* same gap all around */
+}
+
+.flashsale-modal {
+  width: calc(100% - 48px);   /* 24px left + 24px right */
+  height: calc(100% - 48px);  /* 24px top + 24px bottom */
+}
+
+  .flashsale-modal-body {
+    padding: 10px 12px;
+  }
+
+  .flashsale-modal-header {
+    padding: 10px 12px;
+  }
+
+  .flashsale-modal-footer {
+    padding: 8px 12px;
+  }
+
+  .flashsale-title {
+    font-size: 1rem;
+  }
+
+  .flashsale-subtitle {
+    display: none;            /* hide to save space */
+  }
+
+  .products-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .product-image {
+    height: 90px;
+  }
+
+  .product-info {
+    padding: 8px;
+  }
+
+  .product-name {
+    font-size: 0.78rem;
+    margin-bottom: 4px;
+  }
+
+  .current-price {
+    font-size: 0.85rem;
+  }
+
+  .original-price {
+    font-size: 0.72rem;
+  }
+
+  .product-stock {
+    font-size: 0.72rem;
+    margin-bottom: 6px;
+  }
+
+  .buy-button {
+    padding: 6px;
+    font-size: 0.78rem;
+  }
+
+  .deal-timer {
+    font-size: 0.7rem;
+    padding: 4px 8px;
+  }
+
+  .discount-badge {
+    font-size: 0.72rem;
+    padding: 4px 10px;
+  }
 }
