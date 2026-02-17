@@ -165,7 +165,7 @@ export const confirmPurchase = async (req: Request, res: Response): Promise<void
       stripePaymentIntentId,
     });
 
-    res.json({ success: true, message: '🎉 Flash sale purchase confirmed!' });
+    res.json({ success: true, message: 'Flash sale purchase confirmed!' });
   } catch (error: any) {
     if (error.code === 11000) { res.json({ success: true, alreadyConfirmed: true }); return; }
     console.error('Confirm error:', error);

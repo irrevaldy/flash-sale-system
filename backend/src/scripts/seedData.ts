@@ -194,7 +194,7 @@ async function seedDatabase() {
     console.log(`✅ Inserted ${products.length} products`);
 
     // Create a flash sale
-    console.log('⚡ Creating flash sale...');
+    console.log('Creating flash sale...');
     const flashSale = new FlashSale({
       name: 'Weekend Electronics Sale',
       description: 'Get up to 50% off on selected electronics this weekend!',
@@ -234,11 +234,11 @@ async function seedDatabase() {
     });
 
     await flashSale.save();
-    console.log('✅ Flash sale created');
+    console.log('Flash sale created');
 
     console.log('');
     console.log('='.repeat(60));
-    console.log('🎉 Database seeded successfully!');
+    console.log('Database seeded successfully!');
     console.log('='.repeat(60));
     console.log('');
     console.log('Sample data created:');

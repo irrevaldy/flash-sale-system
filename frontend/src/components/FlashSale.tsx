@@ -180,7 +180,7 @@ const FlashSale: React.FC<FlashSaleProps> = ({ isOpen, onClose, user }) => {
         {/* ── Header ── */}
         <div className="flashsale-modal-header">
           <div>
-            <h2 className="flashsale-title">⚡ Flash Sale</h2>
+            <h2 className="flashsale-title">Flash Sale</h2>
             {saleStatus?.status === 'active' && (
               <p className="flashsale-subtitle">
                 Ends in <strong className="fs-countdown">{endCountdown.formatted}</strong>

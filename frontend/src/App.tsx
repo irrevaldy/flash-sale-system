@@ -308,7 +308,7 @@ function AppContent() {
                       Shop Now →
                     </button>
                     <button className="btn-secondary btn-large" onClick={openFlashSale}>
-                      Flash Sale ⚡
+                      Flash Sale
                     </button>
                   </div>
                 </section>
