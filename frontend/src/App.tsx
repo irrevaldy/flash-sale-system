@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -14,6 +14,7 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ProductCatalogPage } from './pages/ProductCatalogPage';
 import CartPage from './pages/CartPage';
 import FlashSale from './components/FlashSale';
+import HomeCarousel from './components/HomeCarousel'; 
 import { ProfilePage } from './pages/ProfilePage';
 import CheckoutPage from './pages/CheckoutPage';
 import OrdersPage from './pages/OrdersPage';
@@ -40,102 +41,8 @@ type HomeProduct = {
   category?: string;
 };
 
-const FLASHSALE_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const FLASHSALE_COOLDOWN_MS = 5 * 60 * 1000;
 const FLASHSALE_LAST_SHOWN_KEY = 'flashsale_last_shown_ts';
-
-function HomeProductCarousel({
-  title,
-  subtitle,
-  products,
-  onView,
-  onAddToCart,
-}: {
-  title: string;
-  subtitle?: string;
-  products: HomeProduct[];
-  onView: (id: string) => void;
-  onAddToCart: (p: HomeProduct) => void;
-}) {
-  const trackRef = useRef<HTMLDivElement | null>(null);
-
-  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    const el = trackRef.current;
-    if (!el) return;
-
-    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    if (delta === 0) return;
-
-    e.preventDefault();
-    el.scrollLeft += delta;
-  };
-
-  if (!products.length) return null;
-
-  return (
-    <section className="home-carousel">
-      <div className="home-carousel-header">
-        <div>
-          <h2 className="home-carousel-title">{title}</h2>
-          {subtitle && <p className="home-carousel-subtitle">{subtitle}</p>}
-        </div>
-      </div>
-
-      <div
-        ref={trackRef}
-        className="home-carousel-track"
-        onWheel={onWheel}
-        aria-label="Product carousel"
-      >
-        {products.map((p) => {
-          const img = p.images?.[0] || 'https://via.placeholder.com/600x400?text=Product';
-          const discount =
-            p.compareAtPrice && p.compareAtPrice > p.price
-              ? Math.round(((p.compareAtPrice - p.price) / p.compareAtPrice) * 100)
-              : 0;
-
-          return (
-            <div key={p._id} className="home-carousel-card">
-              {discount > 0 && <div className="home-carousel-badge">{discount}% OFF</div>}
-
-              <button
-                type="button"
-                className="home-carousel-imageBtn"
-                onClick={() => onView(p._id)}
-                aria-label={`View ${p.name}`}
-              >
-                <img src={img} alt={p.name} className="home-carousel-image" />
-              </button>
-
-              <div className="home-carousel-content">
-                <div className="home-carousel-name" title={p.name}>
-                  {p.name}
-                </div>
-
-                <div className="home-carousel-priceRow">
-                  <span className="home-carousel-price">${Number(p.price).toFixed(2)}</span>
-                  {p.compareAtPrice && p.compareAtPrice > p.price && (
-                    <span className="home-carousel-compare">
-                      ${Number(p.compareAtPrice).toFixed(2)}
-                    </span>
-                  )}
-                </div>
-
-                <div className="home-carousel-actions">
-                  <button className="home-carousel-btnSecondary" onClick={() => onView(p._id)}>
-                    View
-                  </button>
-                  <button className="home-carousel-btnPrimary" onClick={() => onAddToCart(p)}>
-                    Add
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
 
 function AppContent() {
   const navigate = useNavigate();
@@ -145,8 +52,6 @@ function AppContent() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [toastMessage, setToastMessage] = useState('');
   const [isFlashSaleOpen, setIsFlashSaleOpen] = useState(false);
-
-  // Home carousel products (from DB)
   const [homeProducts, setHomeProducts] = useState<HomeProduct[]>([]);
   const [homeProductsLoading, setHomeProductsLoading] = useState(false);
 
@@ -159,7 +64,7 @@ function AppContent() {
     if (storedUser) setUser(JSON.parse(storedUser));
   }, []);
 
-  // ✅ Auto-open FlashSale on Home if not shown in last 5 minutes
+  // Auto-open FlashSale on Home if not shown in last 5 minutes
   useEffect(() => {
     if (location.pathname !== '/') {
       setIsFlashSaleOpen(false);
@@ -180,15 +85,14 @@ function AppContent() {
     }
   }, [location.pathname]);
 
-  // ✅ Load carousel products from DB whenever Home is visited
+  // Load carousel products from DB whenever Home is visited
   useEffect(() => {
     if (location.pathname !== '/') return;
 
     const loadHomeProducts = async () => {
       try {
         setHomeProductsLoading(true);
-        // adjust limit as you want
-        const data = await productApi.getAll({ limit: 12 });
+        const data = await productApi.getAll({ limit: 50 });
         setHomeProducts((data?.products || []) as HomeProduct[]);
       } catch (e) {
         console.error('Failed to load home carousel products', e);
@@ -201,7 +105,7 @@ function AppContent() {
     loadHomeProducts();
   }, [location.pathname]);
 
-  // ============================== AUTH HANDLERS
+  // ── Auth handlers ──
   const handleLogin = (userData: any) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
@@ -225,7 +129,7 @@ function AppContent() {
     localStorage.setItem('user', JSON.stringify(updatedUser));
   };
 
-  // ============================== CART HANDLERS
+  // ── Cart handlers ──
   const handleAddToCart = (product: any) => {
     setCartItems((prev) => {
       const existing = prev.find((item) => item.id === product._id);
@@ -288,7 +192,6 @@ function AppContent() {
     <div className="app">
       {toastMessage && <div className="toast">{toastMessage}</div>}
 
-      {/* FlashSale Popup */}
       <FlashSale
         isOpen={isFlashSaleOpen}
         onClose={closeFlashSale}
@@ -306,12 +209,10 @@ function AppContent() {
               <span className="nav-icon" aria-hidden="true">🏠</span>
               <span className="nav-text">Home</span>
             </Link>
-
             <Link to="/catalog" className="nav-link" aria-label="Shop" title="Shop">
               <span className="nav-icon" aria-hidden="true">🛍️</span>
               <span className="nav-text">Shop</span>
             </Link>
-
             <Link to="/orders" className="nav-link" aria-label="Orders" title="Orders">
               <span className="nav-icon" aria-hidden="true">📦</span>
               <span className="nav-text">Order</span>
@@ -323,71 +224,33 @@ function AppContent() {
               🛒 {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
             </button>
 
-            {/* User Section */}
             {user ? (
               <div className="user-menu">
-                {/* Desktop */}
                 <button className="user-button user-desktop" onClick={() => navigate('/profile')}>
                   👤 {user.profile?.firstName || 'User'}
                 </button>
                 <button className="btn-logout user-desktop" onClick={handleLogout}>
                   Logout
                 </button>
-
-                {/* Mobile (icons only) */}
-                <button
-                  className="icon-button user-mobile"
-                  onClick={() => navigate('/profile')}
-                  aria-label="Profile"
-                  title="Profile"
-                >
-                  👤
-                </button>
-                <button
-                  className="icon-button user-mobile"
-                  onClick={handleLogout}
-                  aria-label="Logout"
-                  title="Logout"
-                >
-                  🚪
-                </button>
+                <button className="icon-button user-mobile" onClick={() => navigate('/profile')} aria-label="Profile" title="Profile">👤</button>
+                <button className="icon-button user-mobile" onClick={handleLogout} aria-label="Logout" title="Logout">🚪</button>
               </div>
             ) : (
               <div className="auth-buttons">
-                {/* Desktop */}
-                <button className="btn-secondary auth-desktop" onClick={() => navigate('/login')}>
-                  Login
-                </button>
-                <button className="btn-primary auth-desktop" onClick={() => navigate('/register')}>
-                  Sign Up
-                </button>
-
-                {/* Mobile (icons only) */}
-                <button
-                  className="icon-button auth-mobile"
-                  onClick={() => navigate('/login')}
-                  aria-label="Login"
-                  title="Login"
-                >
-                  🔑
-                </button>
-                <button
-                  className="icon-button auth-mobile"
-                  onClick={() => navigate('/register')}
-                  aria-label="Register"
-                  title="Register"
-                >
-                  📝
-                </button>
+                <button className="btn-secondary auth-desktop" onClick={() => navigate('/login')}>Login</button>
+                <button className="btn-primary auth-desktop" onClick={() => navigate('/register')}>Sign Up</button>
+                <button className="icon-button auth-mobile" onClick={() => navigate('/login')} aria-label="Login" title="Login">🔑</button>
+                <button className="icon-button auth-mobile" onClick={() => navigate('/register')} aria-label="Register" title="Register">📝</button>
               </div>
             )}
-
           </div>
         </div>
       </header>
 
       <main className="app-main">
         <Routes>
+
+          {/* HOME */}
           <Route
             path="/"
             element={
@@ -401,19 +264,17 @@ function AppContent() {
                       Shop Now →
                     </button>
                     <button className="btn-secondary btn-large" onClick={openFlashSale}>
-                      Flash Sale
+                      Flash Sale ⚡
                     </button>
                   </div>
                 </section>
 
-                {/* ✅ Carousel below hero */}
                 {homeProductsLoading ? (
-                  <div style={{ maxWidth: 1200, margin: '16px auto', padding: '0 16px', color: '#6b7280' }}>
-                    Loading featured products...
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                    Loading products...
                   </div>
                 ) : (
-                  <HomeProductCarousel
-                    title="Featured Products"
+                  <HomeCarousel
                     products={homeProducts}
                     onView={(id) => navigate(`/products/${id}`)}
                     onAddToCart={(p) => handleAddToCart(p)}
@@ -423,27 +284,40 @@ function AppContent() {
             }
           />
 
+          {/* LOGIN */}
           <Route
             path="/login"
             element={
-              <LoginPage onLoginSuccess={handleLogin} onNavigateToRegister={() => navigate('/register')} />
+              <LoginPage
+                onLoginSuccess={handleLogin}
+                onNavigateToRegister={() => navigate('/register')}
+              />
             }
           />
 
+          {/* REGISTER */}
           <Route
             path="/register"
             element={
-              <RegisterPage onRegisterSuccess={handleRegister} onNavigateToLogin={() => navigate('/login')} />
+              <RegisterPage
+                onRegisterSuccess={handleRegister}
+                onNavigateToLogin={() => navigate('/login')}
+              />
             }
           />
 
+          {/* CATALOG */}
           <Route
             path="/catalog"
             element={
-              <ProductCatalogPage onAddToCart={handleAddToCart} onViewProduct={(id) => navigate(`/products/${id}`)} />
+              <ProductCatalogPage
+                onAddToCart={handleAddToCart}
+                onViewProduct={(id) => navigate(`/products/${id}`)}
+              />
             }
           />
 
+          {/* CART */}
           <Route
             path="/cart"
             element={
@@ -458,17 +332,22 @@ function AppContent() {
             }
           />
 
+          {/* PROFILE */}
           <Route
             path="/profile"
             element={
               user ? (
                 <ProfilePage user={user} onUserUpdate={handleUserUpdate} />
               ) : (
-                <LoginPage onLoginSuccess={handleLogin} onNavigateToRegister={() => navigate('/register')} />
+                <LoginPage
+                  onLoginSuccess={handleLogin}
+                  onNavigateToRegister={() => navigate('/register')}
+                />
               )
             }
           />
 
+          {/* CHECKOUT */}
           <Route
             path="/checkout"
             element={
@@ -488,20 +367,24 @@ function AppContent() {
             }
           />
 
+          {/* ORDER DETAIL — must be before /orders */}
           <Route
             path="/orders/:orderNumber"
             element={user ? <OrderDetailPage user={user} /> : <Navigate to="/login" replace />}
           />
 
+          {/* ORDERS LIST */}
           <Route
             path="/orders"
             element={user ? <OrdersPage user={user} /> : <Navigate to="/login" replace />}
           />
 
+          {/* PRODUCT DETAIL */}
           <Route
             path="/products/:productId"
             element={<ProductDetailPage onAddToCart={handleAddToCart} user={user} />}
           />
+
         </Routes>
       </main>
 
