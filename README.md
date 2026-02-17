@@ -189,7 +189,8 @@ brew install k6
 Example stress test:
 
 ```bash
-k6 run stress/k6-reserve.js
+k6 run tests/flash-sale-stress-test.js
+k6 run tests/product-stress-test.js
 ```
 
 Example configuration:
