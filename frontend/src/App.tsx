@@ -55,7 +55,6 @@ function CheckoutWrapper({
 }: {
   user: any;
   cartItems: CartItem[];
-  cartTotal: number;
   onOrderComplete: () => void;
 }) {
   const location = useLocation();
@@ -154,13 +153,13 @@ function AppContent() {
   const handleLogin = (userData: any) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
-    navigate('/catalog');
+    navigate('/');
   };
 
   const handleRegister = (userData: any) => {
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
-    navigate('/catalog');
+    navigate('/');
   };
 
   const handleLogout = () => {
@@ -321,7 +320,6 @@ function AppContent() {
                 ) : (
                   <>
                     <FlashSaleCarousel
-                      onAddToCart={(p) => handleAddToCart(p)}
                       user={user}
                     />
                     <HomeCarousel
@@ -406,7 +404,6 @@ function AppContent() {
                 <CheckoutWrapper
                   user={user}
                   cartItems={cartItems}
-                  cartTotal={cartTotal}
                   onOrderComplete={() => {
                     setCartItems([]);
                     navigate('/orders');

@@ -49,7 +49,6 @@ function useCountdown(targetTime: string | null) {
 export default function FlashSaleCarousel({
   user,
 }: {
-  onAddToCart: (product: any) => void;
   user: any;
 }) {
   const navigate = useNavigate();
