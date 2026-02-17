@@ -78,15 +78,19 @@
 /* ── Track: shows 5 cards, scrollable ── */
 .hc-track {
   display: grid;
-  grid-template-columns: repeat(auto-fill, calc(20% - 13px));
+
+  /* IMPORTANT: do NOT set grid-template-columns here */
   grid-auto-flow: column;
-  grid-auto-columns: calc(20% - 13px);
+
+  /* Desktop: 5 visible cards */
+  grid-auto-columns: calc((100% - (16px * 4)) / 5);
+
   gap: 16px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding-bottom: 4px;
+  padding: 2px 2px 6px;
 }
 
 .hc-track::-webkit-scrollbar {
@@ -252,7 +256,7 @@
 /* ── Tablet: 3 visible ── */
 @media (max-width: 1024px) {
   .hc-track {
-    grid-auto-columns: calc(33.333% - 11px);
+    grid-auto-columns: calc((100% - (16px * 2)) / 3);
   }
 }
 
@@ -268,24 +272,13 @@
   }
 
   .hc-track {
-    grid-auto-columns: calc(50% - 8px);
     gap: 10px;
+    /* 1 item per view */
+    grid-auto-columns: 100%;
+    scroll-snap-type: x mandatory;
   }
 
   .hc-image-btn {
-    height: 120px;
-  }
-
-  .hc-card-body {
-    padding: 10px;
-    gap: 6px;
-  }
-
-  .hc-name {
-    font-size: 0.82rem;
-  }
-
-  .hc-price {
-    font-size: 1rem;
+    height: 140px; /* optional */
   }
 }
