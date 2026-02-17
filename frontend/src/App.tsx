@@ -318,50 +318,65 @@ function AppContent() {
               🛒 {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
             </button>
 
+            {/* User Section */}
             {user ? (
               <div className="user-menu">
-                <button className="user-button" onClick={() => navigate('/profile')}>
+                {/* Desktop */}
+                <button className="user-button user-desktop" onClick={() => navigate('/profile')}>
                   👤 {user.profile?.firstName || 'User'}
                 </button>
-                <button className="btn-logout" onClick={handleLogout}>
+                <button className="btn-logout user-desktop" onClick={handleLogout}>
                   Logout
+                </button>
+
+                {/* Mobile (icons only) */}
+                <button
+                  className="icon-button user-mobile"
+                  onClick={() => navigate('/profile')}
+                  aria-label="Profile"
+                  title="Profile"
+                >
+                  👤
+                </button>
+                <button
+                  className="icon-button user-mobile"
+                  onClick={handleLogout}
+                  aria-label="Logout"
+                  title="Logout"
+                >
+                  🚪
                 </button>
               </div>
             ) : (
               <div className="auth-buttons">
-                {/* Desktop buttons */}
-                <button
-                  className="btn-secondary auth-desktop"
-                  onClick={() => navigate('/login')}
-                >
+                {/* Desktop */}
+                <button className="btn-secondary auth-desktop" onClick={() => navigate('/login')}>
                   Login
                 </button>
-
-                <button
-                  className="btn-primary auth-desktop"
-                  onClick={() => navigate('/register')}
-                >
+                <button className="btn-primary auth-desktop" onClick={() => navigate('/register')}>
                   Sign Up
                 </button>
 
-                {/* Mobile icons */}
+                {/* Mobile (icons only) */}
                 <button
-                  className="auth-mobile icon-button"
+                  className="icon-button auth-mobile"
                   onClick={() => navigate('/login')}
                   aria-label="Login"
+                  title="Login"
                 >
                   🔑
                 </button>
-
                 <button
-                  className="auth-mobile icon-button"
+                  className="icon-button auth-mobile"
                   onClick={() => navigate('/register')}
                   aria-label="Register"
+                  title="Register"
                 >
                   📝
                 </button>
               </div>
             )}
+
           </div>
         </div>
       </header>
