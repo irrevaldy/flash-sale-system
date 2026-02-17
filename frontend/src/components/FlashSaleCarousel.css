@@ -1,44 +1,35 @@
-/* ============================================================
-   Home Carousel — add to App.css (or a separate HomeCarousel.css)
-   All classes prefixed with "hc-" to avoid conflicts
-   ============================================================ */
-
-/* ── Wrapper ── */
-.hc-wrapper {
-  max-width: 1280px;
-  margin: 10px auto;
-  padding: 0 16px 48px;
-  display: flex;
-  flex-direction: column;
-  gap: 48px;
-}
+/* src/components/FlashSaleCarousel.css */
+/* All classes prefixed fsc- to avoid conflicts */
 
 /* ── Section ── */
-.hc-section {
+.fsc-section {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 16px 8px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* ── Section header ── */
-.hc-section-header {
+/* ── Header ── */
+.fsc-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.hc-section-title-row {
+.fsc-title-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.hc-section-emoji {
+.fsc-lightning {
   font-size: 1.6rem;
   line-height: 1;
 }
 
-.hc-section-title {
+.fsc-title {
   margin: 0;
   font-size: 1.4rem;
   font-weight: 700;
@@ -46,20 +37,35 @@
   letter-spacing: -0.3px;
 }
 
+.fsc-live-badge {
+  background: #ef4444;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  animation: fsc-pulse 1.5s infinite;
+}
+
+@keyframes fsc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 /* ── Scroll buttons ── */
-.hc-scroll-btns {
+.fsc-scroll-btns {
   display: flex;
   gap: 8px;
 }
 
-.hc-scroll-btn {
+.fsc-scroll-btn {
   width: 36px;
   height: 36px;
   border-radius: 50%;
   border: 2px solid #e5e7eb;
   background: white;
   font-size: 1.3rem;
-  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -67,16 +73,17 @@
   color: #374151;
   transition: all 0.2s;
   padding: 0;
+  line-height: 1;
 }
 
-.hc-scroll-btn:hover {
-  border-color: #2563eb;
-  color: #2563eb;
-  background: #eff6ff;
+.fsc-scroll-btn:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fff5f5;
 }
 
-/* ── Track: shows 5 cards, scrollable ── */
-.hc-track {
+/* ── Track: 5 cards visible, scrollable ── */
+.fsc-track {
   display: grid;
   grid-template-columns: repeat(auto-fill, calc(20% - 13px));
   grid-auto-flow: column;
@@ -89,12 +96,12 @@
   padding-bottom: 4px;
 }
 
-.hc-track::-webkit-scrollbar {
+.fsc-track::-webkit-scrollbar {
   display: none;
 }
 
 /* ── Card ── */
-.hc-card {
+.fsc-card {
   min-width: 0;
   scroll-snap-align: start;
   background: white;
@@ -105,15 +112,18 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  cursor: pointer;
+  border: 2px solid transparent;
 }
 
-.hc-card:hover {
+.fsc-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 10px 28px rgba(239, 68, 68, 0.15);
+  border-color: #fecaca;
 }
 
 /* ── Discount badge ── */
-.hc-discount-badge {
+.fsc-discount-badge {
   position: absolute;
   top: 10px;
   right: 10px;
@@ -126,32 +136,49 @@
   font-weight: 700;
 }
 
-/* ── Image button ── */
-.hc-image-btn {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  display: block;
-  width: 100%;
-  overflow: hidden;
-  height: 160px;               /* fixed image height */
-  background: #f3f4f6;
+/* ── Countdown timer ── */
+.fsc-timer {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+
+  background: rgba(249, 115, 22, 0.95);
+  color: white;
+
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
-.hc-image {
+.fsc-timer.urgent {
+  background: rgba(239, 68, 68, 0.95);
+  animation: fsc-pulse 1s infinite;
+}
+
+/* ── Image ── */
+.fsc-image-wrap {
+  width: 100%;
+  height: 160px;
+  overflow: hidden;
+  background: #f3f4f6;
+  flex-shrink: 0;
+}
+
+.fsc-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
 }
 
-.hc-card:hover .hc-image {
+.fsc-card:hover .fsc-image {
   transform: scale(1.06);
 }
 
 /* ── Card body ── */
-.hc-card-body {
+.fsc-card-body {
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -160,7 +187,7 @@
 }
 
 /* ── Category badge ── */
-.hc-category-badge {
+.fsc-category-badge {
   display: inline-block;
   padding: 3px 10px;
   border-radius: 999px;
@@ -168,124 +195,104 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  align-self: flex-start;      /* don't stretch full width */
+  align-self: flex-start;
 }
 
 /* ── Name ── */
-.hc-name {
+.fsc-name {
   font-size: 0.9rem;
   font-weight: 600;
   color: #111827;
-  cursor: pointer;
   line-height: 1.4;
-
-  /* 2-line clamp */
   display: -webkit-box;
-  line-clamp:2;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: calc(0.9rem * 1.4 * 2);
-}
-
-.hc-name:hover {
-  color: #2563eb;
 }
 
 /* ── Price row ── */
-.hc-price-row {
+.fsc-price-row {
   display: flex;
   align-items: baseline;
   gap: 8px;
   margin-top: auto;
 }
 
-.hc-price {
+.fsc-price {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #2563eb;
+  color: #ef4444;
 }
 
-.hc-compare {
+.fsc-compare {
   font-size: 0.82rem;
   color: #9ca3af;
   text-decoration: line-through;
 }
 
-/* ── Action buttons ── */
-.hc-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.hc-btn-view,
-.hc-btn-add {
-  padding: 7px 0;
+/* ── Add to cart button ── */
+.fsc-btn-add {
+  width: 100%;
+  padding: 8px 0;
+  background: #ef4444;
+  color: white;
   border: none;
   border-radius: 8px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.18s;
+  margin-top: auto;
 }
 
-.hc-btn-view {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.hc-btn-view:hover {
-  background: #e5e7eb;
-}
-
-.hc-btn-add {
-  background: #2563eb;
-  color: white;
-}
-
-.hc-btn-add:hover {
-  background: #1d4ed8;
+.fsc-btn-add:hover:not(:disabled) {
+  background: #dc2626;
   transform: translateY(-1px);
+}
+
+.fsc-btn-add:disabled {
+  background: #d1d5db;
+  color: #6b7280;
+  cursor: not-allowed;
 }
 
 /* ── Tablet: 3 visible ── */
 @media (max-width: 1024px) {
-  .hc-track {
+  .fsc-track {
     grid-auto-columns: calc(33.333% - 11px);
   }
 }
 
 /* ── Mobile: 2 visible ── */
 @media (max-width: 640px) {
-  .hc-wrapper {
-    padding: 0 12px 32px;
-    gap: 32px;
+  .fsc-section {
+    padding: 0 12px 8px;
   }
 
-  .hc-section-title {
+  .fsc-title {
     font-size: 1.15rem;
   }
 
-  .hc-track {
+  .fsc-track {
     grid-auto-columns: calc(50% - 8px);
     gap: 10px;
   }
 
-  .hc-image-btn {
+  .fsc-image-wrap {
     height: 120px;
   }
 
-  .hc-card-body {
+  .fsc-card-body {
     padding: 10px;
     gap: 6px;
   }
 
-  .hc-name {
+  .fsc-name {
     font-size: 0.82rem;
   }
 
-  .hc-price {
+  .fsc-price {
     font-size: 1rem;
   }
 }

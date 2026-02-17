@@ -14,7 +14,8 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ProductCatalogPage } from './pages/ProductCatalogPage';
 import CartPage from './pages/CartPage';
 import FlashSale from './components/FlashSale';
-import HomeCarousel from './components/HomeCarousel'; 
+import HomeCarousel from './components/HomeCarousel';
+import FlashSaleCarousel from './components/FlashSaleCarousel';
 import { ProfilePage } from './pages/ProfilePage';
 import CheckoutPage from './pages/CheckoutPage';
 import OrdersPage from './pages/OrdersPage';
@@ -274,11 +275,14 @@ function AppContent() {
                     Loading products...
                   </div>
                 ) : (
-                  <HomeCarousel
-                    products={homeProducts}
-                    onView={(id) => navigate(`/products/${id}`)}
-                    onAddToCart={(p) => handleAddToCart(p)}
-                  />
+                  <>
+                    <FlashSaleCarousel onAddToCart={(p) => handleAddToCart(p)} />
+                    <HomeCarousel
+                      products={homeProducts}
+                      onView={(id) => navigate(`/products/${id}`)}
+                      onAddToCart={(p) => handleAddToCart(p)}
+                    />
+                  </>
                 )}
               </div>
             }
