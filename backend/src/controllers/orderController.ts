@@ -7,7 +7,15 @@ import Product from '../models/Product';
 import FlashSale from '../models/FlashSale';
 import mongoose from 'mongoose';
 
+import Stripe from 'stripe';
+
+// ✅ create stripe client once (top of file)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2026-01-28.clover',
+});
+
 export class OrderController {
+
   /**
    * POST /api/orders/checkout
    * Create order from cart
@@ -25,8 +33,30 @@ export class OrderController {
         return;
       }
 
+      // ✅ Validate payment intent id presence
+      const paymentIntentId = payment?.stripePaymentIntentId;
+      if (!paymentIntentId) {
+        await session.abortTransaction();
+        res.status(400).json({ error: 'Missing stripePaymentIntentId' });
+        return;
+      }
+
+      // ✅ Verify payment with Stripe (NO webhook needed)
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+      if (pi.status !== 'succeeded') {
+        await session.abortTransaction();
+        res.status(400).json({
+          error: `Payment not completed. Stripe status: ${pi.status}`,
+        });
+        return;
+      }
+
       // Get cart
-      const cart = await Cart.findOne({ userId }).populate('items.productId').session(session);
+      const cart = await Cart.findOne({ userId })
+        .populate('items.productId')
+        .session(session);
+
       if (!cart || cart.items.length === 0) {
         res.status(400).json({ error: 'Cart is empty' });
         await session.abortTransaction();
@@ -34,7 +64,7 @@ export class OrderController {
       }
 
       // Validate stock and prepare order items
-      const orderItems = [];
+      const orderItems: any[] = [];
       let subtotal = 0;
 
       for (const cartItem of cart.items) {
@@ -42,9 +72,7 @@ export class OrderController {
 
         // Check stock
         if (!product.isInStock(cartItem.quantity)) {
-          res.status(400).json({
-            error: `Insufficient stock for ${product.name}`,
-          });
+          res.status(400).json({ error: `Insufficient stock for ${product.name}` });
           await session.abortTransaction();
           return;
         }
@@ -86,19 +114,19 @@ export class OrderController {
       }
 
       // Calculate pricing
-      const discount = orderItems.reduce((sum, item) => sum + item.discountAmount, 0);
-      const tax = subtotal * 0.1; // 10% tax
+      const discount = orderItems.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+      const tax = subtotal * 0.1;
       const shippingCost = subtotal > 50 ? 0 : 10;
       const total = subtotal + tax + shippingCost;
 
       // Generate order number
       const orderNumber = `FS-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
 
-      // Create order
+      // ✅ Create order as PAID/CONFIRMED because Stripe succeeded
       const order = new Order({
         orderNumber,
         userId,
-        status: 'pending',
+        status: 'confirmed',
         items: orderItems,
         pricing: {
           subtotal: Number(subtotal.toFixed(2)),
@@ -109,9 +137,19 @@ export class OrderController {
         },
         shipping,
         payment: {
-          ...payment,
-          status: 'pending',
+          method: payment.method || 'credit_card',
+          status: 'paid',
+          stripePaymentIntentId: paymentIntentId,
+          transactionId: pi.latest_charge?.toString(),
+          paidAt: new Date(),
         },
+        timeline: [
+          {
+            status: 'confirmed',
+            timestamp: new Date(),
+            note: 'Payment verified via Stripe PaymentIntent',
+          },
+        ],
       });
 
       await order.save({ session });
@@ -120,7 +158,6 @@ export class OrderController {
       cart.clear();
       await cart.save({ session });
 
-      // Commit transaction
       await session.commitTransaction();
 
       res.status(201).json({

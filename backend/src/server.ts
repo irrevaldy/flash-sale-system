@@ -13,12 +13,14 @@ import cartController from './controllers/cartController';
 import orderController from './controllers/orderController';
 import userController from './controllers/userController';
 import { apiLimiter, purchaseLimiter, statusLimiter } from './middleware/rateLimiter';
+import paymentRoutes from './routes/paymentRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
+app.use('/api/payments', paymentRoutes);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

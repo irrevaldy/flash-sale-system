@@ -1,10 +1,25 @@
 // src/pages/CheckoutPage.tsx
-// v2.0 - Complete checkout flow with shipping and payment
+// v3.1 - Stripe payment integration (FIXED: uses real PaymentIntent id + no client-side "paid")
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { loadStripe } from '@stripe/stripe-js';
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from '@stripe/react-stripe-js';
 import { userApi, orderApi } from '../services/api';
+import api from '../services/api';
 import './CheckoutPage.css';
+
+// ── Stripe instance (created once outside component) ──
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
 
 interface Address {
   _id?: string;
@@ -35,6 +50,106 @@ interface CheckoutPageProps {
   onOrderComplete?: () => void;
 }
 
+// ─────────────────────────────────────────────
+// STRIPE PAYMENT FORM (needs Elements context)
+// ─────────────────────────────────────────────
+
+interface StripeFormProps {
+  total: number;
+  clientSecret: string;
+  onSuccess: (piId: string) => void;
+  onBack: () => void;
+  loading: boolean;
+  setLoading: (v: boolean) => void;
+  setError: (v: string) => void;
+}
+
+const StripePaymentForm: React.FC<StripeFormProps> = ({
+  total,
+  clientSecret,
+  onSuccess,
+  onBack,
+  loading,
+  setLoading,
+  setError,
+}) => {
+  const stripe = useStripe();
+  const elements = useElements();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setLoading(true);
+    setError('');
+
+    // ✅ REQUIRED for PaymentElement (deferred / async flows)
+    const { error: submitError } = await elements.submit();
+    if (submitError) {
+      setError(submitError.message || 'Invalid payment details.');
+      setLoading(false);
+      return;
+    }
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      clientSecret,
+      redirect: 'if_required',
+    });
+
+    if (error) {
+      setError(error.message || 'Payment failed. Please try again.');
+      setLoading(false);
+      return;
+    }
+
+    if (!paymentIntent?.id) {
+      setError('Payment did not complete properly.');
+      setLoading(false);
+      return;
+    }
+
+    onSuccess(paymentIntent.id);
+  };
+
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="stripe-element-wrapper">
+        <PaymentElement options={{ layout: 'tabs' }} />
+      </div>
+
+      <div className="stripe-secure-note">
+        🔒 Secured by Stripe. Your card details are never stored on our servers.
+      </div>
+
+      <div className="checkout-actions">
+        <button type="button" className="btn-secondary" onClick={onBack}>
+          ← Back
+        </button>
+        <button
+          type="submit"
+          className="btn-primary btn-place-order"
+          disabled={!stripe || loading}
+        >
+          {loading ? 'Processing...' : `Pay $${total.toFixed(2)}`}
+        </button>
+      </div>
+
+      <div className="test-cards-hint">
+        <strong>🧪 Test cards:</strong>&nbsp;
+        <code>4242 4242 4242 4242</code> Success &nbsp;|&nbsp;
+        <code>4000 0000 0000 0002</code> Decline
+        <br />Any future expiry · Any CVC
+      </div>
+    </form>
+  );
+};
+
+// ─────────────────────────────────────────────
+// MAIN CHECKOUT PAGE
+// ─────────────────────────────────────────────
+
 export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   user,
   cartItems,
@@ -42,14 +157,14 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   onOrderComplete,
 }) => {
   const navigate = useNavigate();
-  const [step, setStep] = useState<'shipping' | 'payment' | 'review'>('shipping');
+  const [step, setStep] = useState<'shipping' | 'payment'>('shipping');
   const [addresses, setAddresses] = useState<Address[]>([]);
-  const [selectedAddressId, setSelectedAddressId] = useState<string>('');
+  const [selectedAddressId, setSelectedAddressId] = useState('');
   const [useNewAddress, setUseNewAddress] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
 
-  // New address form
   const [newAddress, setNewAddress] = useState<Address>({
     type: 'shipping',
     firstName: user?.profile?.firstName || '',
@@ -63,117 +178,118 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
     isDefault: false,
   });
 
-  // Payment form
-  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'debit_card' | 'paypal'>('credit_card');
+  const subtotal = cartTotal;
+  const tax = subtotal * 0.1;
+  const shipping = subtotal > 50 ? 0 : 10;
+  const total = subtotal + tax + shipping;
 
-  // Load saved addresses
   useEffect(() => {
     if (!user) {
       navigate('/login');
       return;
     }
-
     loadAddresses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const loadAddresses = async () => {
     try {
       const profile = await userApi.getProfile(user.email);
       setAddresses(profile.addresses || []);
-      
-      // Select default address
-      const defaultAddr = profile.addresses?.find((a: Address) => a.isDefault);
-      if (defaultAddr) {
-        setSelectedAddressId(defaultAddr._id!);
-      }
-    } catch (error) {
-      console.error('Error loading addresses:', error);
+      const def = profile.addresses?.find((a: Address) => a.isDefault);
+      if (def) setSelectedAddressId(def._id!);
+    } catch (err) {
+      console.error('Error loading addresses:', err);
     }
   };
 
-  // Calculate totals
-  const subtotal = cartTotal;
-  const tax = subtotal * 0.1;
-  const shipping = subtotal > 50 ? 0 : 10;
-  const total = subtotal + tax + shipping;
-
-  // Handle shipping submission
+  // Step 1: validate address → create PaymentIntent → go to payment
   const handleShippingSubmit = async () => {
     if (!useNewAddress && !selectedAddressId) {
       setError('Please select a shipping address');
       return;
     }
-
-    if (useNewAddress) {
-      // Validate new address
-      if (!newAddress.street || !newAddress.city || !newAddress.state || !newAddress.zipCode) {
-        setError('Please fill in all required fields');
-        return;
-      }
+    if (
+      useNewAddress &&
+      (!newAddress.street ||
+        !newAddress.city ||
+        !newAddress.state ||
+        !newAddress.zipCode)
+    ) {
+      setError('Please fill in all required address fields');
+      return;
     }
 
     setError('');
-    setStep('payment');
-  };
-
-  // Handle place order
-  const handlePlaceOrder = async () => {
     setLoading(true);
-    setError('');
 
     try {
-      // Get shipping address
-      let shippingAddress: any;
+      // NOTE:
+      // If your axios baseURL already includes "/api", then use:
+      //   api.post('/payments/create-payment-intent', ...)
+      // If baseURL does NOT include "/api", keep "/api/payments/..."
+      const res = await api.post('/api/payments/create-payment-intent', {
+        amount: total,
+        currency: 'usd',
+      });
 
-      if (useNewAddress) {
-        shippingAddress = newAddress;
-      } else {
-        shippingAddress = addresses.find(a => a._id === selectedAddressId);
-      }
-
-      if (!shippingAddress) {
-        throw new Error('No shipping address selected');
-      }
-
-      // Prepare order data
-      const orderData = {
-        userId: user.email,
-        shipping: {
-          firstName: shippingAddress.firstName,
-          lastName: shippingAddress.lastName,
-          email: user.email,
-          phone: shippingAddress.phone,
-          address: shippingAddress.street,
-          city: shippingAddress.city,
-          state: shippingAddress.state,
-          zipCode: shippingAddress.zipCode,
-          country: shippingAddress.country,
-        },
-        payment: {
-          method: paymentMethod,
-          status: 'pending',
-        },
-      };
-
-      // Call checkout API
-      const response = await orderApi.checkout(orderData);
-
-      if (response.success) {
-        alert('Order placed successfully! Order #' + response.order.orderNumber);
-        onOrderComplete?.();
-        navigate('/orders');
-      }
+      setClientSecret(res.data.clientSecret);
+      setStep('payment');
     } catch (err: any) {
-      console.error('Checkout error:', err);
-      setError(err.response?.data?.error || 'Failed to place order. Please try again.');
+      console.log('init payment error:', err);
+      console.log('status:', err?.response?.status);
+      console.log('data:', err?.response?.data);
+      setError(err?.response?.data?.error || err?.message || 'Failed to initialize payment.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!user) {
-    return null;
-  }
+  // Step 2: payment confirmed → create order (backend verifies PI is succeeded)
+  const handlePaymentSuccess = async (piId: string) => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const addr = useNewAddress
+        ? newAddress
+        : addresses.find((a) => a._id === selectedAddressId);
+
+      if (!addr) throw new Error('No shipping address');
+
+      const response = await orderApi.checkout({
+        userId: user.email,
+        shipping: {
+          firstName: addr.firstName,
+          lastName: addr.lastName,
+          email: user.email,
+          phone: addr.phone,
+          address: addr.street,
+          city: addr.city,
+          state: addr.state,
+          zipCode: addr.zipCode,
+          country: addr.country,
+        },
+        payment: {
+          method: 'credit_card',
+          stripePaymentIntentId: piId, // ✅ confirmed PI id
+        },
+      });
+
+      if (response.success) {
+        onOrderComplete?.();
+        navigate(`/orders/${response.order.orderNumber}`);
+      } else {
+        setError('Order creation failed. Please contact support.');
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Order creation failed. Please contact support.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!user) return null;
 
   if (cartItems.length === 0) {
     return (
@@ -181,7 +297,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         <div className="checkout-container">
           <h1>Checkout</h1>
           <div className="empty-state">
-            <p>Your cart is empty. Add items to proceed with checkout.</p>
+            <p>Your cart is empty.</p>
             <button className="btn-primary" onClick={() => navigate('/catalog')}>
               Shop Now
             </button>
@@ -199,37 +315,29 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
         {/* Progress Steps */}
         <div className="checkout-steps">
           <div className={`step ${step === 'shipping' ? 'active' : 'completed'}`}>
-            <div className="step-number">1</div>
+            <div className="step-number">{step !== 'shipping' ? '✓' : '1'}</div>
             <div className="step-label">Shipping</div>
           </div>
-          <div className={`step ${step === 'payment' ? 'active' : step === 'review' ? 'completed' : ''}`}>
+          <div className="step-connector" />
+          <div className={`step ${step === 'payment' ? 'active' : ''}`}>
             <div className="step-number">2</div>
             <div className="step-label">Payment</div>
           </div>
-          <div className={`step ${step === 'review' ? 'active' : ''}`}>
-            <div className="step-number">3</div>
-            <div className="step-label">Review</div>
-          </div>
         </div>
 
-        {error && (
-          <div className="error-alert">
-            ⚠️ {error}
-          </div>
-        )}
+        {error && <div className="error-alert">⚠️ {error}</div>}
 
         <div className="checkout-content">
-          {/* Left: Forms */}
+          {/* ── Left: Forms ── */}
           <div className="checkout-main">
             {/* STEP 1: Shipping */}
             {step === 'shipping' && (
               <div className="checkout-section">
                 <h2>Shipping Address</h2>
 
-                {/* Saved Addresses */}
                 {addresses.length > 0 && !useNewAddress && (
                   <div className="address-list">
-                    {addresses.map(address => (
+                    {addresses.map((address) => (
                       <label key={address._id} className="address-option">
                         <input
                           type="radio"
@@ -239,40 +347,39 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                           onChange={() => setSelectedAddressId(address._id!)}
                         />
                         <div className="address-content">
-                          {address.isDefault && <span className="badge-default">Default</span>}
-                          <div className="address-name">
+                          <strong>
                             {address.firstName} {address.lastName}
-                          </div>
-                          <div className="address-details">
-                            {address.street}<br />
-                            {address.city}, {address.state} {address.zipCode}<br />
-                            {address.phone}
-                          </div>
+                          </strong>
+                          <span>
+                            {address.street}, {address.city}, {address.state}{' '}
+                            {address.zipCode}
+                          </span>
+                          <span>{address.phone}</span>
                         </div>
                       </label>
                     ))}
+                    <button className="btn-link" onClick={() => setUseNewAddress(true)}>
+                      + Use a different address
+                    </button>
                   </div>
                 )}
 
-                {/* Use New Address Toggle */}
-                <button
-                  className="btn-secondary btn-full"
-                  onClick={() => setUseNewAddress(!useNewAddress)}
-                >
-                  {useNewAddress ? '← Use Saved Address' : '+ Add New Address'}
-                </button>
-
-                {/* New Address Form */}
-                {useNewAddress && (
-                  <div className="address-form">
+                {(useNewAddress || addresses.length === 0) && (
+                  <div className="new-address-form">
+                    {addresses.length > 0 && (
+                      <button className="btn-link" onClick={() => setUseNewAddress(false)}>
+                        ← Use saved address
+                      </button>
+                    )}
                     <div className="form-row">
                       <div className="form-group">
                         <label>First Name *</label>
                         <input
                           type="text"
                           value={newAddress.firstName}
-                          onChange={(e) => setNewAddress({ ...newAddress, firstName: e.target.value })}
-                          required
+                          onChange={(e) =>
+                            setNewAddress({ ...newAddress, firstName: e.target.value })
+                          }
                         />
                       </div>
                       <div className="form-group">
@@ -280,8 +387,9 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                         <input
                           type="text"
                           value={newAddress.lastName}
-                          onChange={(e) => setNewAddress({ ...newAddress, lastName: e.target.value })}
-                          required
+                          onChange={(e) =>
+                            setNewAddress({ ...newAddress, lastName: e.target.value })
+                          }
                         />
                       </div>
                     </div>
@@ -291,9 +399,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                       <input
                         type="text"
                         value={newAddress.street}
-                        onChange={(e) => setNewAddress({ ...newAddress, street: e.target.value })}
-                        placeholder="123 Main St, Apt 4"
-                        required
+                        onChange={(e) =>
+                          setNewAddress({ ...newAddress, street: e.target.value })
+                        }
+                        placeholder="123 Main St"
                       />
                     </div>
 
@@ -303,8 +412,9 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                         <input
                           type="text"
                           value={newAddress.city}
-                          onChange={(e) => setNewAddress({ ...newAddress, city: e.target.value })}
-                          required
+                          onChange={(e) =>
+                            setNewAddress({ ...newAddress, city: e.target.value })
+                          }
                         />
                       </div>
                       <div className="form-group">
@@ -312,19 +422,21 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                         <input
                           type="text"
                           value={newAddress.state}
-                          onChange={(e) => setNewAddress({ ...newAddress, state: e.target.value })}
+                          onChange={(e) =>
+                            setNewAddress({ ...newAddress, state: e.target.value })
+                          }
                           placeholder="CA"
-                          required
                         />
                       </div>
                       <div className="form-group">
-                        <label>ZIP Code *</label>
+                        <label>ZIP *</label>
                         <input
                           type="text"
                           value={newAddress.zipCode}
-                          onChange={(e) => setNewAddress({ ...newAddress, zipCode: e.target.value })}
+                          onChange={(e) =>
+                            setNewAddress({ ...newAddress, zipCode: e.target.value })
+                          }
                           placeholder="90210"
-                          required
                         />
                       </div>
                     </div>
@@ -334,147 +446,59 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                       <input
                         type="tel"
                         value={newAddress.phone}
-                        onChange={(e) => setNewAddress({ ...newAddress, phone: e.target.value })}
+                        onChange={(e) =>
+                          setNewAddress({ ...newAddress, phone: e.target.value })
+                        }
                         placeholder="+1 (555) 123-4567"
-                        required
                       />
                     </div>
                   </div>
                 )}
 
-                <button className="btn-primary btn-full" onClick={handleShippingSubmit}>
-                  Continue to Payment →
+                <button className="btn-primary btn-full" onClick={handleShippingSubmit} disabled={loading}>
+                  {loading ? 'Preparing payment...' : 'Continue to Payment →'}
                 </button>
               </div>
             )}
 
-            {/* STEP 2: Payment */}
-            {step === 'payment' && (
+            {/* STEP 2: Stripe Payment */}
+            {step === 'payment' && clientSecret && (
               <div className="checkout-section">
-                <h2>Payment Method</h2>
-
-                <div className="payment-methods">
-                  <label className="payment-option">
-                    <input
-                      type="radio"
-                      name="payment"
-                      value="credit_card"
-                      checked={paymentMethod === 'credit_card'}
-                      onChange={() => setPaymentMethod('credit_card')}
-                    />
-                    <div className="payment-content">
-                      <span className="payment-icon">💳</span>
-                      <span>Credit Card</span>
-                    </div>
-                  </label>
-
-                  <label className="payment-option">
-                    <input
-                      type="radio"
-                      name="payment"
-                      value="debit_card"
-                      checked={paymentMethod === 'debit_card'}
-                      onChange={() => setPaymentMethod('debit_card')}
-                    />
-                    <div className="payment-content">
-                      <span className="payment-icon">💳</span>
-                      <span>Debit Card</span>
-                    </div>
-                  </label>
-
-                  <label className="payment-option">
-                    <input
-                      type="radio"
-                      name="payment"
-                      value="paypal"
-                      checked={paymentMethod === 'paypal'}
-                      onChange={() => setPaymentMethod('paypal')}
-                    />
-                    <div className="payment-content">
-                      <span className="payment-icon">🅿️</span>
-                      <span>PayPal</span>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="payment-note">
-                  💡 Payment will be processed securely after order confirmation
-                </div>
-
-                <div className="checkout-actions">
-                  <button className="btn-secondary" onClick={() => setStep('shipping')}>
-                    ← Back to Shipping
-                  </button>
-                  <button className="btn-primary" onClick={() => setStep('review')}>
-                    Review Order →
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 3: Review */}
-            {step === 'review' && (
-              <div className="checkout-section">
-                <h2>Review Your Order</h2>
-
-                <div className="review-section">
-                  <h3>Shipping Address</h3>
-                  {useNewAddress ? (
-                    <div className="review-address">
-                      {newAddress.firstName} {newAddress.lastName}<br />
-                      {newAddress.street}<br />
-                      {newAddress.city}, {newAddress.state} {newAddress.zipCode}<br />
-                      {newAddress.phone}
-                    </div>
-                  ) : (
-                    <div className="review-address">
-                      {(() => {
-                        const addr = addresses.find(a => a._id === selectedAddressId);
-                        return addr ? (
-                          <>
-                            {addr.firstName} {addr.lastName}<br />
-                            {addr.street}<br />
-                            {addr.city}, {addr.state} {addr.zipCode}<br />
-                            {addr.phone}
-                          </>
-                        ) : 'No address selected';
-                      })()}
-                    </div>
-                  )}
-                </div>
-
-                <div className="review-section">
-                  <h3>Payment Method</h3>
-                  <p className="review-payment">
-                    {paymentMethod === 'credit_card' && '💳 Credit Card'}
-                    {paymentMethod === 'debit_card' && '💳 Debit Card'}
-                    {paymentMethod === 'paypal' && '🅿️ PayPal'}
-                  </p>
-                </div>
-
-                <div className="checkout-actions">
-                  <button className="btn-secondary" onClick={() => setStep('payment')}>
-                    ← Back to Payment
-                  </button>
-                  <button
-                    className="btn-primary btn-place-order"
-                    onClick={handlePlaceOrder}
-                    disabled={loading}
-                  >
-                    {loading ? 'Processing...' : `Place Order - $${total.toFixed(2)}`}
-                  </button>
-                </div>
+                <h2>Payment</h2>
+                <Elements
+                  stripe={stripePromise}
+                  options={{
+                    clientSecret,
+                    appearance: {
+                      theme: 'stripe',
+                      variables: {
+                        colorPrimary: '#2563eb',
+                        borderRadius: '8px',
+                        fontFamily: 'system-ui, sans-serif',
+                      },
+                    },
+                  }}
+                >
+                  <StripePaymentForm
+                    total={total}
+                    clientSecret={clientSecret}
+                    onSuccess={handlePaymentSuccess}
+                    onBack={() => setStep('shipping')}
+                    loading={loading}
+                    setLoading={setLoading}
+                    setError={setError}
+                  />
+                </Elements>
               </div>
             )}
           </div>
 
-          {/* Right: Order Summary */}
+          {/* ── Right: Order Summary ── */}
           <div className="checkout-sidebar">
             <div className="order-summary-card">
               <h3>Order Summary</h3>
-
               <div className="summary-items">
-                {cartItems.map(item => (
+                {cartItems.map((item) => (
                   <div key={item.id} className="summary-item">
                     <img src={item.image || 'https://via.placeholder.com/60'} alt={item.name} />
                     <div className="summary-item-details">
@@ -488,25 +512,24 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
                 ))}
               </div>
 
-              <div className="summary-divider"></div>
-
+              <div className="summary-divider" />
               <div className="summary-row">
-                <span>Subtotal:</span>
+                <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
               <div className="summary-row">
-                <span>Tax:</span>
+                <span>Tax (10%)</span>
                 <span>${tax.toFixed(2)}</span>
               </div>
               <div className="summary-row">
-                <span>Shipping:</span>
-                <span>{shipping === 0 ? <span className="free">FREE</span> : `$${shipping.toFixed(2)}`}</span>
+                <span>Shipping</span>
+                <span>
+                  {shipping === 0 ? <span className="free">FREE</span> : `$${shipping.toFixed(2)}`}
+                </span>
               </div>
-
-              <div className="summary-divider"></div>
-
+              <div className="summary-divider" />
               <div className="summary-row summary-total">
-                <span>Total:</span>
+                <span>Total</span>
                 <span>${total.toFixed(2)}</span>
               </div>
             </div>

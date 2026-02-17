@@ -1,5 +1,5 @@
 // src/models/Order.ts
-// v2.2 - FIXED: Removed duplicate index warnings
+// v2.3 - Added stripePaymentIntentId to support Stripe verification + webhook updates
 
 import mongoose, { Schema, Document } from 'mongoose';
 
@@ -19,7 +19,14 @@ export interface IOrderItem {
 export interface IOrder extends Document {
   orderNumber: string;
   userId: string;
-  status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
+  status:
+    | 'pending'
+    | 'confirmed'
+    | 'processing'
+    | 'shipped'
+    | 'delivered'
+    | 'cancelled'
+    | 'refunded';
   items: IOrderItem[];
   pricing: {
     subtotal: number;
@@ -42,6 +49,10 @@ export interface IOrder extends Document {
   payment: {
     method: string;
     status: 'pending' | 'paid' | 'failed' | 'refunded';
+
+    // ✅ Stripe
+    stripePaymentIntentId?: string;
+
     transactionId?: string;
     paidAt?: Date;
   };
@@ -53,61 +64,34 @@ export interface IOrder extends Document {
   createdAt: Date;
   updatedAt: Date;
 
-  // Methods
   updateStatus(newStatus: string, note?: string): void;
 }
 
 const OrderItemSchema = new Schema<IOrderItem>({
-  productId: {
-    type: Schema.Types.ObjectId,
-    ref: 'Product',
-    required: true,
-  },
+  productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
   productSnapshot: {
     name: { type: String, required: true },
     sku: { type: String, required: true },
     image: { type: String, required: true },
   },
-  quantity: {
-    type: Number,
-    required: true,
-    min: 1,
-  },
-  pricePerUnit: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
-  flashSaleId: {
-    type: Schema.Types.ObjectId,
-    ref: 'FlashSale',
-  },
-  discountAmount: {
-    type: Number,
-    default: 0,
-    min: 0,
-  },
+  quantity: { type: Number, required: true, min: 1 },
+  pricePerUnit: { type: Number, required: true, min: 0 },
+  flashSaleId: { type: Schema.Types.ObjectId, ref: 'FlashSale' },
+  discountAmount: { type: Number, default: 0, min: 0 },
 });
 
 const OrderSchema = new Schema<IOrder>(
   {
-    orderNumber: {
-      type: String,
-      required: true,
-      unique: true,  // This creates an index, so we don't need schema.index() for it
-      uppercase: true,
-    },
-    userId: {
-      type: String,
-      required: true,
-      // Removed index: true to use compound index below
-    },
+    orderNumber: { type: String, required: true, unique: true, uppercase: true },
+
+    userId: { type: String, required: true },
+
     status: {
       type: String,
       enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
       default: 'pending',
-      // Removed index: true to use compound index below
     },
+
     items: {
       type: [OrderItemSchema],
       required: true,
@@ -118,6 +102,7 @@ const OrderSchema = new Schema<IOrder>(
         message: 'Order must have at least one item',
       },
     },
+
     pricing: {
       subtotal: { type: Number, required: true, min: 0 },
       discount: { type: Number, default: 0, min: 0 },
@@ -125,6 +110,7 @@ const OrderSchema = new Schema<IOrder>(
       shipping: { type: Number, default: 0, min: 0 },
       total: { type: Number, required: true, min: 0 },
     },
+
     shipping: {
       firstName: { type: String, required: true },
       lastName: { type: String, required: true },
@@ -136,6 +122,7 @@ const OrderSchema = new Schema<IOrder>(
       zipCode: { type: String, required: true },
       country: { type: String, required: true, default: 'USA' },
     },
+
     payment: {
       method: {
         type: String,
@@ -147,9 +134,14 @@ const OrderSchema = new Schema<IOrder>(
         enum: ['pending', 'paid', 'failed', 'refunded'],
         default: 'pending',
       },
+
+      // ✅ store PI id so you can verify or update later (webhook)
+      stripePaymentIntentId: { type: String, index: true },
+
       transactionId: String,
       paidAt: Date,
     },
+
     timeline: {
       type: [
         {
@@ -161,19 +153,12 @@ const OrderSchema = new Schema<IOrder>(
       default: [],
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// Compound indexes (more efficient than separate indexes)
-OrderSchema.index({ userId: 1, createdAt: -1 });  // For user order history
-OrderSchema.index({ status: 1, createdAt: -1 });  // For order filtering by status
+OrderSchema.index({ userId: 1, createdAt: -1 });
+OrderSchema.index({ status: 1, createdAt: -1 });
 
-// Note: orderNumber already has a unique index from the schema definition above
-// so we don't need: OrderSchema.index({ orderNumber: 1 });
-
-// Pre-save hook to add initial timeline entry
 OrderSchema.pre('save', function (next) {
   if (this.isNew && this.timeline.length === 0) {
     this.timeline.push({
@@ -185,14 +170,9 @@ OrderSchema.pre('save', function (next) {
   next();
 });
 
-// Method to update order status
 OrderSchema.methods.updateStatus = function (newStatus: string, note?: string) {
   this.status = newStatus;
-  this.timeline.push({
-    status: newStatus,
-    timestamp: new Date(),
-    note,
-  });
+  this.timeline.push({ status: newStatus, timestamp: new Date(), note });
 };
 
 export default mongoose.model<IOrder>('Order', OrderSchema);
